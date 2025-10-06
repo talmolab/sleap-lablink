@@ -16,7 +16,8 @@ machine:
   machine_type: "g4dn.xlarge"  # GPU instance for ML workloads
 
   # Docker image for client VMs (use version tags for production)
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  # image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-a29e86314968007a092092673d2fa6ba158aaf2e-test"
 
   # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
   ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
@@ -42,7 +43,7 @@ dns:
   zone_id: "Z010760118DSWF5IYKMOM"  # (Optional) Hardcode zone ID to skip lookup
   app_name: ""  # Not used with custom pattern
   pattern: "custom"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
-  custom_subdomain: "test"  # Will create: test.lablink.sleap.ai
+  custom_subdomain: ""  # Will create at: lablink.sleap.ai
   create_zone: false  # false = use existing zone, true = create new zone
 
 eip:
@@ -52,7 +53,7 @@ eip:
 ssl:
   provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
   email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
-  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
 
 # S3 bucket for Terraform state (must be unique globally)
 # Only used for test/prod environments with S3 backend (not used in dev)

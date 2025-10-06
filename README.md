@@ -7,7 +7,7 @@
 
 Deploy SLEAP LabLink infrastructure for cloud-based VM allocation and management. This repository uses Terraform and GitHub Actions to automate deployment of the LabLink allocator service to AWS for SLEAP pose estimation workflows.
 
-📖 **Main Documentation**: https://talmolab.github.io/lablink/
+📖 **Main Documentation**: https://lablink.talmolab.org
 🚀 **Deployment Guide**: See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step deployment instructions
 📋 **Deployment Checklist**: See [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) for pre-deployment verification
 📊 **AWS Resources**: See [AWS_RESOURCES.md](AWS_RESOURCES.md) for EIPs, AMIs, and DNS details

@@ -1,0 +1,60 @@
+# LabLink Allocator Configuration
+# This file configures the allocator service and client VM specifications
+# Copy to config.yaml and customize for your deployment
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD"  # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type (must support your workload)
+  machine_type: "g4dn.xlarge"  # GPU instance for ML workloads
+
+  # Docker image for client VMs (use version tags for production)
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+
+  # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
+
+  # Git repository with your data/code (optional - leave empty if not needed)
+  repository: "https://github.com/YOUR_ORG/YOUR_REPO.git"
+
+  # Software identifier for your application
+  software: "your-software"
+
+  # File extension for your data files
+  extension: "ext"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD"  # Injected from GitHub secret at deploy time
+  region: "us-west-2"  # Your AWS region
+
+dns:
+  enabled: false  # true = use DNS for allocator URL, false = IP-only access
+  terraform_managed: false  # false = manual DNS records (you create in Route53), true = Terraform creates/destroys records
+  domain: "lablink.example.com"  # Your Route53 hosted zone domain
+  zone_id: ""  # (Optional) Hardcode zone ID to skip lookup - leave empty for auto-lookup
+  app_name: "lablink"  # Used with "auto" pattern
+  pattern: "auto"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
+  custom_subdomain: ""  # Only used with "custom" pattern
+  create_zone: false  # false = use existing zone, true = create new zone
+
+eip:
+  strategy: "persistent"  # "persistent" = reuse tagged EIP, "dynamic" = create new EIP each time
+  tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
+
+ssl:
+  provider: "none"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  email: "admin@example.com"  # Email for Let's Encrypt notifications
+  staging: true  # true = staging/testing certs (unlimited), false = production Let's Encrypt certs (rate limited)
+
+# S3 bucket for Terraform state (must be unique globally)
+# Only used for test/prod environments with S3 backend (not used in dev)
+# Replace YOUR-ORG with your organization name
+bucket_name: "tf-state-YOUR-ORG-lablink"

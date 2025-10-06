@@ -108,7 +108,7 @@ jobs:
           ssh -i /tmp/lablink-key.pem -o StrictHostKeyChecking=no \
               ubuntu@${{ steps.allocator_info.outputs.allocator_ip }} << 'ENDSSH'
             # Get the allocator container ID
-            CONTAINER_ID=$(docker ps --filter "ancestor=ghcr.io/talmolab/lablink-allocator" --format "{{.ID}}" | head -n 1)
+            CONTAINER_ID=$(sudo docker ps --filter "ancestor=ghcr.io/talmolab/lablink-allocator" --format "{{.ID}}" | head -n 1)
 
             if [ -z "$CONTAINER_ID" ]; then
               echo "⚠ No allocator container found - client VMs may already be destroyed"
@@ -118,7 +118,7 @@ jobs:
             echo "✓ Found allocator container: $CONTAINER_ID"
 
             # Run terraform destroy inside the container
-            docker exec $CONTAINER_ID bash -c '
+            sudo docker exec $CONTAINER_ID bash -c '
               cd /app/lablink_allocator/terraform
 
               # Check if terraform state exists

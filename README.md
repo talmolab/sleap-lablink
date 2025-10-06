@@ -1,81 +1,83 @@
-# LabLink Infrastructure Template
+# SLEAP LabLink Infrastructure
 
-> **GitHub Template Repository** for deploying LabLink infrastructure to AWS
+> **SLEAP-specific deployment** of LabLink infrastructure to AWS for cloud-based pose estimation
 
 [![License](https://img.shields.io/badge/License-BSD%202--Clause-orange.svg)](https://opensource.org/licenses/BSD-2-Clause)
 [![Terraform](https://img.shields.io/badge/Terraform-1.6+-purple.svg)](https://www.terraform.io/)
 
-Deploy your own LabLink infrastructure for cloud-based VM allocation and management. This template uses Terraform and GitHub Actions to automate deployment of the LabLink allocator service to AWS.
+Deploy SLEAP LabLink infrastructure for cloud-based VM allocation and management. This repository uses Terraform and GitHub Actions to automate deployment of the LabLink allocator service to AWS for SLEAP pose estimation workflows.
 
 📖 **Main Documentation**: https://talmolab.github.io/lablink/
+🚀 **Deployment Guide**: See [DEPLOYMENT.md](DEPLOYMENT.md) for step-by-step deployment instructions
+📋 **Deployment Checklist**: See [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) for pre-deployment verification
+📊 **AWS Resources**: See [AWS_RESOURCES.md](AWS_RESOURCES.md) for EIPs, AMIs, and DNS details
 
-## What is LabLink?
+## What is SLEAP LabLink?
 
-LabLink automates deployment and management of cloud-based VMs for running research software. It provides:
-- **Web interface** for requesting and managing VMs
-- **Automatic VM provisioning** with your software pre-installed
-- **GPU support** for ML/AI workloads
+SLEAP LabLink automates deployment and management of cloud-based VMs for SLEAP pose estimation. It provides:
+- **Web interface** for requesting and managing SLEAP VMs
+- **Automatic VM provisioning** with SLEAP and GPU drivers pre-installed
+- **GPU support** for ML/AI workloads (g4dn.xlarge instances)
 - **Chrome Remote Desktop** access to VM GUI
-- **Flexible configuration** for different research needs
+- **Tutorial data** pre-loaded from sleap-tutorial-data repository
 
 ## Quick Start
 
-### 1. Use This Template
+**Full deployment instructions**: See [DEPLOYMENT.md](DEPLOYMENT.md)
 
-Click the **"Use this template"** button at the top of this repository to create your own deployment repository.
+### Choose Your Environment
 
-### 2. Set Up GitHub Secrets
+| Environment | Purpose | URL | Deploy Method |
+|-------------|---------|-----|---------------|
+| **Dev** | Local development | `http://<IP>:5000` | Local Terraform |
+| **Test** | Staging | `http://test.lablink.sleap.ai` | GitHub Actions |
+| **Prod** | Production | `https://lablink.sleap.ai` | GitHub Actions |
 
-Go to your repository → Settings → Secrets and variables → Actions, and add these secrets:
+### Deploy to Test (Staging)
 
-| Secret Name | Description | Example Value |
-|-------------|-------------|---------------|
-| `AWS_ROLE_ARN` | IAM role ARN for GitHub Actions OIDC | `arn:aws:iam::123456789012:role/github-actions-role` |
-| `AWS_REGION` | AWS region for deployment | `us-west-2` |
-| `ADMIN_PASSWORD` | Password for allocator web interface | `your-secure-password` |
-| `DB_PASSWORD` | PostgreSQL database password | `your-secure-db-password` |
-
-### 3. Configure Your Deployment
-
-Edit [`lablink-infrastructure/config/config.yaml`](lablink-infrastructure/config/config.yaml):
-
-```yaml
-# Update these values for your deployment:
-machine:
-  repository: "https://github.com/YOUR_ORG/YOUR_DATA_REPO.git"
-  software: "your-software-name"
-  extension: "your-file-ext"
-
-dns:
-  enabled: true  # Set to true if using custom domain
-  domain: "your-domain.com"
-
-bucket_name: "tf-state-YOUR-ORG-lablink"  # Must be globally unique
-```
-
-See [Configuration Reference](#configuration-reference) for all options.
-
-### 4. Deploy
-
-**Via GitHub Actions (Recommended):**
-1. Go to Actions → "Deploy LabLink Infrastructure"
-2. Click "Run workflow"
-3. Select environment (`test` or `prod`)
-4. Click "Run workflow"
-
-**Via Local Terraform:**
+**1. Copy test configuration:**
 ```bash
 cd lablink-infrastructure
-terraform init -backend-config=backend-test.hcl
-terraform apply
+cp config/config-test.yaml config/config.yaml
+git add config/config.yaml
+git commit -m "Configure for test deployment"
+git push
 ```
 
-### 5. Access Your Infrastructure
+**2. Run GitHub Actions:**
+1. Go to **Actions** → **Deploy LabLink Infrastructure**
+2. Click **Run workflow**
+3. Select environment: **`test`**
+4. Click **Run workflow**
 
-After deployment completes:
-- **Allocator URL**: Check workflow output or Terraform output for the URL/IP
-- **SSH Access**: Download the PEM key from workflow artifacts
-- **Web Interface**: Navigate to allocator URL in your browser
+**3. Access after deployment:**
+- **URL**: `http://test.lablink.sleap.ai`
+- **Admin**: `http://test.lablink.sleap.ai/admin` (username: `admin`)
+- **SSH**: Download `lablink-key-test.pem` from workflow artifacts
+
+### Deploy to Production
+
+**1. Copy production configuration:**
+```bash
+cd lablink-infrastructure
+cp config/config-prod.yaml config/config.yaml
+git add config/config.yaml
+git commit -m "Configure for production deployment"
+git push
+```
+
+**2. Run GitHub Actions:**
+1. Go to **Actions** → **Deploy LabLink Infrastructure**
+2. Click **Run workflow**
+3. Select environment: **`prod`**
+4. Click **Run workflow**
+
+**3. Access after deployment:**
+- **URL**: `https://lablink.sleap.ai` (HTTPS with SSL)
+- **Admin**: `https://lablink.sleap.ai/admin` (username: `admin`)
+- **SSH**: Download `lablink-key-prod.pem` from workflow artifacts
+
+For detailed instructions including Dev (local) deployment, see [DEPLOYMENT.md](DEPLOYMENT.md)
 
 ## Prerequisites
 
@@ -256,9 +258,10 @@ machine:
 - `t3.large` - CPU-only, cheaper
 - `p3.2xlarge` - More powerful GPU (NVIDIA V100)
 
-**AMI IDs** (Ubuntu 24.04 with Docker + Nvidia):
-- `us-west-2`: `ami-0601752c11b394251`
-- Other regions: Use AWS Console to find similar AMI or create custom
+**AMI IDs** (Custom Ubuntu 24.04 - see [AWS_RESOURCES.md](AWS_RESOURCES.md)):
+- Client VM (GPU): `ami-0601752c11b394251` (Docker + Nvidia GPU drivers)
+- Allocator VM: `ami-0bd08c9d4aa9f0bc6` (Docker only)
+- Region: us-west-2 only (custom AMIs maintained by SLEAP team)
 
 ### Application Settings
 

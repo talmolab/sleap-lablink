@@ -21,14 +21,14 @@ machine:
   # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
   ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
 
-  # Git repository with your data/code (optional - leave empty if not needed)
-  repository: "https://github.com/YOUR_ORG/YOUR_REPO.git"
+  # Git repository with your data/code
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
 
   # Software identifier for your application
-  software: "your-software"
+  software: "sleap"
 
   # File extension for your data files
-  extension: "ext"
+  extension: "slp"
 
 app:
   admin_user: "admin"
@@ -36,13 +36,13 @@ app:
   region: "us-west-2"  # Your AWS region
 
 dns:
-  enabled: false  # true = use DNS for allocator URL, false = IP-only access
+  enabled: true  # true = use DNS for allocator URL, false = IP-only access
   terraform_managed: false  # false = manual DNS records (you create in Route53), true = Terraform creates/destroys records
-  domain: "lablink.example.com"  # Your Route53 hosted zone domain
-  zone_id: ""  # (Optional) Hardcode zone ID to skip lookup - leave empty for auto-lookup
-  app_name: "lablink"  # Used with "auto" pattern
-  pattern: "auto"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
-  custom_subdomain: ""  # Only used with "custom" pattern
+  domain: "lablink.sleap.ai"  # Your Route53 hosted zone domain
+  zone_id: "Z010760118DSWF5IYKMOM"  # (Optional) Hardcode zone ID to skip lookup
+  app_name: ""  # Not used with custom pattern
+  pattern: "custom"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
+  custom_subdomain: "test"  # Will create: test.lablink.sleap.ai
   create_zone: false  # false = use existing zone, true = create new zone
 
 eip:
@@ -50,11 +50,10 @@ eip:
   tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
 
 ssl:
-  provider: "none"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
-  email: "admin@example.com"  # Email for Let's Encrypt notifications
-  staging: true  # true = staging/testing certs (unlimited), false = production Let's Encrypt certs (rate limited)
+  provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
+  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
 
 # S3 bucket for Terraform state (must be unique globally)
 # Only used for test/prod environments with S3 backend (not used in dev)
-# Replace YOUR-ORG with your organization name
-bucket_name: "tf-state-YOUR-ORG-lablink"
+bucket_name: "tf-state-lablink-allocator-bucket"

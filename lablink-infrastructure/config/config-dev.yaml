@@ -1,0 +1,58 @@
+# SLEAP LabLink - Dev Environment Configuration
+# Use this for local development and testing with local Terraform state
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD"  # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type
+  machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
+
+  # Docker image for client VMs
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+
+  # AMI ID for us-west-2 (see AWS_RESOURCES.md)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia
+
+  # Git repository with SLEAP tutorial data
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
+
+  # Software identifier for SLEAP
+  software: "sleap"
+
+  # File extension for SLEAP data files
+  extension: "slp"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD"  # Injected from GitHub secret at deploy time
+  region: "us-west-2"
+
+dns:
+  enabled: false  # Dev uses IP-only access (no DNS)
+  terraform_managed: false
+  domain: "lablink.sleap.ai"
+  zone_id: "Z010760118DSWF5IYKMOM"
+  app_name: ""
+  pattern: "custom"
+  custom_subdomain: "dev"
+  create_zone: false
+
+eip:
+  strategy: "dynamic"  # Dev creates new EIP each time (no persistent EIP needed)
+  tag_name: "lablink-eip"
+
+ssl:
+  provider: "none"  # Dev uses HTTP only (no SSL)
+  email: "admin@sleap.ai"
+  staging: true
+
+# S3 bucket for Terraform state
+# Dev uses local state (backend-dev.hcl), so this is not used
+bucket_name: "tf-state-lablink-allocator-bucket"

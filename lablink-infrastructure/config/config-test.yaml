@@ -1,0 +1,57 @@
+# SLEAP LabLink - Test Environment Configuration
+# Use this for staging/pre-production testing with S3 backend
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD"  # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type
+  machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
+
+  # Docker image for client VMs
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+
+  # AMI ID for us-west-2 (see AWS_RESOURCES.md)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia
+
+  # Git repository with SLEAP tutorial data
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
+
+  # Software identifier for SLEAP
+  software: "sleap"
+
+  # File extension for SLEAP data files
+  extension: "slp"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD"  # Injected from GitHub secret at deploy time
+  region: "us-west-2"
+
+dns:
+  enabled: true  # Test uses DNS: test.lablink.sleap.ai
+  terraform_managed: false  # Manual DNS records (already created in Route53)
+  domain: "lablink.sleap.ai"
+  zone_id: "Z010760118DSWF5IYKMOM"
+  app_name: ""
+  pattern: "custom"
+  custom_subdomain: "test"  # Creates: test.lablink.sleap.ai
+  create_zone: false
+
+eip:
+  strategy: "persistent"  # Test reuses lablink-eip-test (54.214.215.124)
+  tag_name: "lablink-eip"  # Terraform appends "-test" → lablink-eip-test
+
+ssl:
+  provider: "letsencrypt"  # Caddy for SSL
+  email: "admin@sleap.ai"
+  staging: true  # HTTP only (unlimited testing, no rate limits)
+
+# S3 bucket for Terraform state
+bucket_name: "tf-state-lablink-allocator-bucket"

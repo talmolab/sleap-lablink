@@ -1,6 +1,6 @@
-# LabLink Allocator Configuration
+# SLEAP LabLink Allocator Configuration
 # This file configures the allocator service and client VM specifications
-# Copy to config.yaml and customize for your deployment
+# This is the example configuration - actual config is in config.yaml
 
 db:
   dbname: "lablink_db"
@@ -13,22 +13,24 @@ db:
 
 machine:
   # Client VM instance type (must support your workload)
-  machine_type: "g4dn.xlarge"  # GPU instance for ML workloads
+  machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
 
   # Docker image for client VMs (use version tags for production)
-  image: "ghcr.io/talmolab/lablink-client-base-image:0.0.8a0"
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
 
-  # AMI ID for your AWS region (Ubuntu 22.04 recommended)
-  ami_id: "ami-067cc81f948e50e06"  # us-west-2 Ubuntu 22.04
+  # AMI ID for us-west-2 (see AWS_RESOURCES.md for details)
+  # Client VM AMI: ami-0601752c11b394251 (Ubuntu 24.04 + Docker + Nvidia GPU Driver)
+  # Allocator AMI: ami-0bd08c9d4aa9f0bc6 (Ubuntu 24.04 + Docker)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
 
-  # Git repository with your data/code
-  repository: "https://github.com/yourusername/your-data-repo.git"
+  # Git repository with SLEAP tutorial data
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
 
-  # Software identifier for your application
-  software: "your-software"  # e.g., "sleap", "deeplabcut", "anipose"
+  # Software identifier for SLEAP
+  software: "sleap"
 
-  # File extension for your data files
-  extension: "ext"  # e.g., "slp" for SLEAP, "h5" for DeepLabCut
+  # File extension for SLEAP data files
+  extension: "slp"
 
 app:
   admin_user: "admin"
@@ -36,23 +38,24 @@ app:
   region: "us-west-2"  # Your AWS region
 
 dns:
-  enabled: false  # Set to true if using Route53
-  terraform_managed: false  # false = manual DNS records, true = Terraform creates/destroys records
-  domain: "example.com"  # Your domain
-  zone_id: ""  # (Optional) Hardcode zone ID to skip lookup
-  app_name: "lablink"
-  pattern: "auto"  # auto, custom
-  custom_subdomain: ""
-  create_zone: false
+  enabled: true  # true = use DNS for allocator URL, false = IP-only access
+  terraform_managed: false  # false = manual DNS records (you create in Route53), true = Terraform creates/destroys records
+  domain: "lablink.sleap.ai"  # Route53 hosted zone domain
+  zone_id: "Z010760118DSWF5IYKMOM"  # Hardcoded zone ID to skip lookup
+  app_name: ""  # Not used with custom pattern
+  pattern: "custom"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
+  custom_subdomain: "test"  # Will create: test.lablink.sleap.ai (change to "prod" for production)
+  create_zone: false  # false = use existing zone, true = create new zone
 
 eip:
   strategy: "persistent"  # "persistent" = reuse tagged EIP, "dynamic" = create new EIP each time
-  tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
+  tag_name: "lablink-eip"  # Terraform appends env suffix: lablink-eip-test or lablink-eip-prod (see AWS_RESOURCES.md)
 
 ssl:
   provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
-  email: "admin@example.com"  # Email for Let's Encrypt notifications
-  staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
+  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
 
 # S3 bucket for Terraform state (must be unique globally)
-bucket_name: "tf-state-lablink-allocator-bucket-YOUR-UNIQUE-SUFFIX"
+# Only used for test/prod environments with S3 backend (not used in dev)
+bucket_name: "tf-state-lablink-allocator-bucket"

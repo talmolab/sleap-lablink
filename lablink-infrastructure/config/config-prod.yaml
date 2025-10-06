@@ -1,0 +1,57 @@
+# SLEAP LabLink - Production Environment Configuration
+# Use this for production deployment with S3 backend and HTTPS
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD"  # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type
+  machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
+
+  # Docker image for client VMs - USE SPECIFIC VERSION TAG FOR PRODUCTION
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest"  # Or use specific version like v0.1.0
+
+  # AMI ID for us-west-2 (see AWS_RESOURCES.md)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia
+
+  # Git repository with SLEAP tutorial data
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
+
+  # Software identifier for SLEAP
+  software: "sleap"
+
+  # File extension for SLEAP data files
+  extension: "slp"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD"  # Injected from GitHub secret at deploy time
+  region: "us-west-2"
+
+dns:
+  enabled: true  # Production uses DNS: lablink.sleap.ai (root domain)
+  terraform_managed: false  # Manual DNS records (already created in Route53)
+  domain: "lablink.sleap.ai"
+  zone_id: "Z010760118DSWF5IYKMOM"
+  app_name: ""
+  pattern: "custom"
+  custom_subdomain: ""  # Empty = root domain (lablink.sleap.ai)
+  create_zone: false
+
+eip:
+  strategy: "persistent"  # Production reuses lablink-eip-prod (44.224.160.186)
+  tag_name: "lablink-eip"  # Terraform appends "-prod" → lablink-eip-prod
+
+ssl:
+  provider: "letsencrypt"  # Caddy auto-SSL with Let's Encrypt
+  email: "admin@sleap.ai"
+  staging: false  # HTTPS with trusted certificates (RATE LIMITED: 5 certs/week)
+
+# S3 bucket for Terraform state
+bucket_name: "tf-state-lablink-allocator-bucket"

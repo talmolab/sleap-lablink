@@ -245,3 +245,4 @@ lambda_package.zip
 *.swp
 *.swo
 *~
+.claude/settings.local.json

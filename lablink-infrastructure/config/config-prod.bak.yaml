@@ -17,7 +17,9 @@ machine:
 
   # Docker image for client VMs (use version tags for production)
   # image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
-  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-a29e86314968007a092092673d2fa6ba158aaf2e-test"
+  # image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-a29e86314968007a092092673d2fa6ba158aaf2e-test"
+  # image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-3e8fc7baf4aa5ae290fcd8601993a2c1305bf9d1-test"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"
 
   # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
   ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
@@ -51,9 +53,11 @@ eip:
   tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
 
 ssl:
-  provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  # provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  provider: "none"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
   email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
-  staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  # staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
 
 # S3 bucket for Terraform state (must be unique globally)
 # Only used for test/prod environments with S3 backend (not used in dev)

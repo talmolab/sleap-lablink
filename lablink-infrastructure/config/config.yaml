@@ -1,6 +1,5 @@
-# LabLink Allocator Configuration
-# This file configures the allocator service and client VM specifications
-# Copy to config.yaml and customize for your deployment
+# SLEAP LabLink - Test Environment Configuration
+# Use this for staging/pre-production testing with S3 backend
 
 db:
   dbname: "lablink_db"
@@ -12,53 +11,48 @@ db:
   message_channel: "vm_updates"
 
 machine:
-  # Client VM instance type (must support your workload)
-  machine_type: "g4dn.xlarge"  # GPU instance for ML workloads
+  # Client VM instance type
+  machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
 
-  # Docker image for client VMs (use version tags for production)
+  # Docker image for client VMs
   # image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
-  # image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-a29e86314968007a092092673d2fa6ba158aaf2e-test"
-  # image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-3e8fc7baf4aa5ae290fcd8601993a2c1305bf9d1-test"
   image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"
 
-  # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
-  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 custom AMI
+  # AMI ID for us-west-2 (see AWS_RESOURCES.md)
+  ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia
 
-  # Git repository with your data/code
+  # Git repository with SLEAP tutorial data
   repository: "https://github.com/talmolab/sleap-tutorial-data.git"
 
-  # Software identifier for your application
+  # Software identifier for SLEAP
   software: "sleap"
 
-  # File extension for your data files
+  # File extension for SLEAP data files
   extension: "slp"
 
 app:
   admin_user: "admin"
   admin_password: "PLACEHOLDER_ADMIN_PASSWORD"  # Injected from GitHub secret at deploy time
-  region: "us-west-2"  # Your AWS region
+  region: "us-west-2"
 
 dns:
-  enabled: true  # true = use DNS for allocator URL, false = IP-only access
-  terraform_managed: false  # false = manual DNS records (you create in Route53), true = Terraform creates/destroys records
-  domain: "lablink.sleap.ai"  # Your Route53 hosted zone domain
-  zone_id: "Z010760118DSWF5IYKMOM"  # (Optional) Hardcode zone ID to skip lookup
-  app_name: ""  # Not used with custom pattern
-  pattern: "custom"  # "auto" = {env}.{app_name}.{domain}, "custom" = {custom_subdomain}.{domain}
-  custom_subdomain: ""  # Will create at: lablink.sleap.ai
-  create_zone: false  # false = use existing zone, true = create new zone
+  enabled: true  # Test uses DNS: test.lablink.sleap.ai
+  terraform_managed: false  # Manual DNS records (already created in Route53)
+  domain: "lablink.sleap.ai"
+  zone_id: "Z010760118DSWF5IYKMOM"
+  app_name: ""
+  pattern: "custom"
+  custom_subdomain: "test"  # Creates: test.lablink.sleap.ai
+  create_zone: false
 
 eip:
-  strategy: "persistent"  # "persistent" = reuse tagged EIP, "dynamic" = create new EIP each time
-  tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
+  strategy: "persistent"  # Test reuses lablink-eip-test (54.214.215.124)
+  tag_name: "lablink-eip"  # Terraform appends "-test" → lablink-eip-test
 
 ssl:
-  # provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
-  provider: "none"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
-  email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
-  # staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
-  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  provider: "none"  # Caddy for SSL
+  email: "admin@sleap.ai"
+  staging: true  # HTTP only (unlimited testing, no rate limits)
 
-# S3 bucket for Terraform state (must be unique globally)
-# Only used for test/prod environments with S3 backend (not used in dev)
+# S3 bucket for Terraform state
 bucket_name: "tf-state-lablink-allocator-bucket"

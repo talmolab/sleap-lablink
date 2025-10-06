@@ -15,7 +15,8 @@ machine:
   machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
 
   # Docker image for client VMs
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  # image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-a29e86314968007a092092673d2fa6ba158aaf2e-test"
 
   # AMI ID for us-west-2 (see AWS_RESOURCES.md)
   ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia

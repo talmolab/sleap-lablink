@@ -53,9 +53,11 @@ eip:
   tag_name: "lablink-eip"  # Tag Name to identify reusable EIP (used with persistent strategy)
 
 ssl:
-  provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  # provider: "letsencrypt"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
+  provider: "none"  # "letsencrypt" = Caddy auto-SSL, "cloudflare" = CloudFlare proxy, "none" = HTTP only
   email: "admin@sleap.ai"  # Email for Let's Encrypt notifications
-  staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  # staging: false  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
+  staging: true  # true = HTTP only (unlimited testing), false = HTTPS with trusted Let's Encrypt certs (rate limited)
 
 # S3 bucket for Terraform state (must be unique globally)
 # Only used for test/prod environments with S3 backend (not used in dev)

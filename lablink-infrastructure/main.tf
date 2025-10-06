@@ -223,7 +223,9 @@ locals {
   )
 
   # Full domain name
-  fqdn = local.dns_enabled ? "${local.subdomain}.${local.dns_domain}" : "N/A"
+  fqdn = local.dns_enabled ? (
+    local.subdomain != "" ? "${local.subdomain}.${local.dns_domain}" : local.dns_domain
+  ) : "N/A"
 
   # Zone ID from either config, lookup, or creation (priority: config > create > lookup)
   zone_id = local.dns_enabled ? (

@@ -11,7 +11,7 @@ on:
       deployment_name:
         description: "Unique deployment name (must match the deployment to destroy)"
         required: true
-        default: "my-lablink"
+        default: "sleap-lablink"
         type: string
       environment:
         description: "Environment to destroy (test, prod, or ci-test) - dev uses local state and should only be used locally"

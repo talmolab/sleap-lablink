@@ -11,8 +11,10 @@
 # Setup:
 # 1. Deploy infrastructure (note allocator IP from output)
 # 2. Create A record in CloudFlare: lablink.example.com → {allocator_public_ip}
+#    (use the allocator's Elastic IP from `terraform output ec2_public_ip`)
 # 3. Enable CloudFlare proxy (orange cloud)
-# 4. SSL/TLS mode: Full (not Strict)
+# 4. SSL/TLS mode: Full (NOT Full (strict)). The origin serves a self-signed
+#    cert (Caddy "tls internal"); Full accepts it, Full (strict) would reject it.
 #
 # Access URL: https://lablink.example.com (CloudFlare provides SSL)
 

@@ -80,9 +80,19 @@ ${DOMAIN_NAME} {
 EOF
   elif [ "${SSL_PROVIDER}" = "cloudflare" ]; then
     cat <<EOF > /etc/caddy/Caddyfile
-# CloudFlare DNS + SSL (managed in CloudFlare)
-# Caddy serves HTTP, CloudFlare proxies with SSL
+# CloudFlare DNS + SSL (managed in CloudFlare).
+# CloudFlare terminates TLS at its edge and then connects back to this origin,
+# matching the visitor's protocol. In the recommended "Full" mode it connects
+# over HTTPS on port 443 and does NOT validate the origin certificate, so Caddy
+# serves a self-signed cert via "tls internal" (no ACME, no Let's Encrypt rate
+# limits). The plain-HTTP block keeps the origin reachable if CloudFlare is set
+# to "Flexible" or a visitor arrives over HTTP.
 http://${DOMAIN_NAME} {
+    reverse_proxy localhost:5000
+}
+
+https://${DOMAIN_NAME} {
+    tls internal
     reverse_proxy localhost:5000
 }
 EOF

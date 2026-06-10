@@ -243,7 +243,7 @@ Each environment maintains separate Terraform state to avoid conflicts.
 **SSL Provider Options:**
 
 - `letsencrypt`: Caddy automatically obtains trusted Let's Encrypt certificates and serves HTTPS
-- `cloudflare`: CloudFlare proxy provides SSL termination (Caddy serves HTTP, CloudFlare adds HTTPS)
+- `cloudflare`: CloudFlare proxy provides edge SSL. Caddy serves the origin over HTTPS with a self-signed cert (`tls internal`), compatible with CloudFlare's recommended **Full** mode (Full does not validate the origin cert). Also serves HTTP for Flexible mode. Use Full, not Full (strict).
 - `acm`: AWS Certificate Manager via Application Load Balancer (enterprise-grade SSL)
 - `none`: HTTP only (no SSL) - for testing purposes only
 

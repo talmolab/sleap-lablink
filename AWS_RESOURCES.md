@@ -80,14 +80,14 @@ This document lists all pre-provisioned AWS resources for SLEAP LabLink deployme
 - **Name**: `test.lablink.sleap.ai`
 - **Type**: A (Address)
 - **TTL**: 300 seconds
-- **Value**: `54.214.215.124` (lablink-eip-test)
+- **Value**: `54.214.215.124` *(pre-migration IP; will change after new sleap-lablink-eip-test is deployed — update this record to the new IP from `terraform output -raw ec2_public_ip`)*
 - **Status**: ✅ **CONFIGURED**
 
 #### Production Environment (Root Domain)
 - **Name**: `lablink.sleap.ai` (root domain)
 - **Type**: A (Address)
 - **TTL**: 300 seconds
-- **Value**: `44.224.160.186` (lablink-eip-prod)
+- **Value**: `44.224.160.186` *(pre-migration IP; will change after new sleap-lablink-eip-prod is deployed — update this record to the new IP from `terraform output -raw ec2_public_ip`)*
 - **Status**: ✅ **CONFIGURED**
 
 ### DNS Management Strategy
@@ -101,9 +101,9 @@ This means:
 - ⚠️ You must manually update records if EIP changes
 
 **Environment to DNS Mapping:**
-- **Test**: `test.lablink.sleap.ai` → `54.214.215.124`
+- **Test**: `test.lablink.sleap.ai` → `54.214.215.124` *(pre-migration; will change after new sleap-lablink-eip-test deploy)*
   - Config: `dns.domain: "test.lablink.sleap.ai"`
-- **Production**: `lablink.sleap.ai` → `44.224.160.186`
+- **Production**: `lablink.sleap.ai` → `44.224.160.186` *(pre-migration; will change after new sleap-lablink-eip-prod deploy)*
   - Config: `dns.domain: "lablink.sleap.ai"`
 
 **Alternative - Terraform-Managed DNS:**

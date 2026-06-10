@@ -243,7 +243,7 @@ db:
 ```yaml
 machine:
   machine_type: "g4dn.xlarge"  # AWS instance type
-  image: "ghcr.io/talmolab/lablink-client-base-image:latest"  # Docker image
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"  # Docker image
   ami_id: "ami-0601752c11b394251"  # Region-specific AMI
   repository: "https://github.com/YOUR_ORG/YOUR_REPO.git"  # Your code/data repo
   software: "your-software"  # Software identifier
@@ -312,8 +312,8 @@ Deploys or updates your LabLink infrastructure.
 - Automatic: Push to `test` branch
 
 **Inputs**:
+- `deployment_name`: e.g. `sleap-lablink`
 - `environment`: `test` or `prod`
-- `image_tag`: (Optional) Specific Docker image tag for prod
 
 **What it does**:
 1. Configures AWS credentials via OIDC
@@ -333,12 +333,17 @@ Deploys or updates your LabLink infrastructure.
 - `confirm_destroy`: Must type "yes" to confirm
 - `environment`: `test` or `prod`
 
-### Test Client VM Infrastructure
+### Config Validation
 
-Tests that client VMs can be provisioned correctly.
+Validates `config.yaml` for correctness on every pull request (`config-validation.yml`).
 
-**Triggers**:
-- Manual only
+**Triggers**: Pull request
+
+### Startup Script Validation
+
+Lints `custom-startup.sh` for shell errors on every pull request (`startup-script-validation.yml`).
+
+**Triggers**: Pull request
 
 ## Customization
 
@@ -431,10 +436,11 @@ terraform force-unlock LOCK_ID
 
 ```
 sleap-lablink/
-├── .github/workflows/          # GitHub Actions workflows
-│   ├── terraform-deploy.yml    # Deploy infrastructure
-│   ├── terraform-destroy.yml   # Destroy infrastructure
-│   └── client-vm-infrastructure-test.yml
+├── .github/workflows/                      # GitHub Actions workflows
+│   ├── terraform-deploy.yml                # Deploy infrastructure
+│   ├── terraform-destroy.yml               # Destroy infrastructure
+│   ├── config-validation.yml               # Validate config.yaml on PR
+│   └── startup-script-validation.yml       # Lint custom-startup.sh on PR
 ├── lablink-infrastructure/     # Terraform infrastructure
 │   ├── config/
 │   │   ├── config.yaml         # Active configuration (single file)
@@ -446,9 +452,15 @@ sleap-lablink/
 │   ├── backend-*.hcl           # Environment-specific backends
 │   ├── user_data.sh            # EC2 initialization script
 │   └── README.md               # Infrastructure documentation
-├── scripts/                    # Helper scripts
-│   ├── init-terraform.sh       # Initialize Terraform backend
-│   └── verify-deployment.sh    # Deployment verification
+├── scripts/                           # Helper scripts
+│   ├── setup.sh                       # Initial project setup
+│   ├── configure.sh                   # Configure project settings
+│   ├── init-terraform.sh              # Initialize Terraform backend
+│   ├── verify-deployment.sh           # Deployment verification
+│   ├── estimate-costs.sh              # Estimate AWS costs
+│   ├── cleanup-orphaned-resources.sh  # Remove orphaned AWS resources
+│   ├── validate-all-configs.sh        # Validate all config files (Linux/macOS)
+│   └── validate-all-configs.ps1       # Validate all config files (Windows)
 ├── README.md                   # This file
 ├── DEPLOYMENT_CHECKLIST.md     # Pre-deployment checklist
 └── LICENSE

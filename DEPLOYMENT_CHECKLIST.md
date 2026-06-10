@@ -77,7 +77,7 @@ Use this checklist to ensure you have completed all required setup steps before 
   - Type: `g4dn.xlarge` (GPU instance for ML)
 - [x] Verified `ami_id` matches us-west-2 region
   - AMI: `ami-0601752c11b394251` (Ubuntu 24.04 + Docker + Nvidia)
-- [x] Using Docker image: `ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test`
+- [x] Using Docker image: `ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test`
 
 **Application Settings:**
 - [x] Verified `region` matches `AWS_REGION` secret (us-west-2)
@@ -154,7 +154,7 @@ Use this checklist to ensure you have completed all required setup steps before 
 - [ ] Can create a test client VM from admin dashboard
 - [ ] Client VM provisions successfully with SLEAP configuration:
   - Instance type: `g4dn.xlarge` (GPU)
-  - Docker image: `ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test`
+  - Docker image: `ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test`
   - SLEAP tutorial data cloned from repository
 - [ ] Client VM appears in "View Instances" page
 - [ ] Can access client VM via Chrome Remote Desktop

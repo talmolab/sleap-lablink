@@ -192,13 +192,13 @@ For persistent allocator IP address across deployments:
 # Allocate EIP
 aws ec2 allocate-address --domain vpc --region us-west-2
 
-# Tag it for reuse
+# Tag it for reuse (both tags are required for eip.strategy: "persistent")
 aws ec2 create-tags \
   --resources eipalloc-XXXXXXXX \
-  --tags Key=Name,Value=lablink-eip
+  --tags Key=Name,Value=sleap-lablink-eip-test Key=Environment,Value=test
 ```
 
-The EIP name tag is derived automatically as `{deployment_name}-eip-{environment}` (e.g. `sleap-lablink-eip-test`).
+Pre-allocate the EIP and tag it with **both** `Name=sleap-lablink-eip-{environment}` and `Environment={environment}` before deploying. Terraform fails at plan time if these tags are not found — it does not auto-create the EIP.
 
 ### 3. (Optional) Set Up Route 53 for DNS
 

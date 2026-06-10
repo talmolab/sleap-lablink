@@ -130,31 +130,31 @@ app:
   admin_password: "your-dev-admin-password"  # Replace PLACEHOLDER
 ```
 
-**3. Initialize Terraform (run from `lablink-infrastructure/`):**
+**2. Initialize Terraform (run from `lablink-infrastructure/`):**
 ```bash
 # From lablink-infrastructure/
 ../scripts/init-terraform.sh \
   dev
 ```
 
-**4. Deploy:**
+**3. Deploy:**
 ```bash
 terraform plan
 terraform apply
 ```
 
-**5. Get access information:**
+**4. Get access information:**
 ```bash
 terraform output ec2_public_ip
 # Access: http://<IP>:5000
 ```
 
-**6. Verify:**
+**5. Verify:**
 - SSH: `ssh -i lablink-key.pem ubuntu@<IP>`
 - Web: Navigate to `http://<IP>:5000/admin`
-- Login: username `admin`, password from step 2
+- Login: username `admin`, password from step 1
 
-**7. Destroy when done:**
+**6. Destroy when done:**
 ```bash
 terraform destroy
 ```
@@ -170,22 +170,22 @@ git commit -m "Configure for test deployment"
 git push
 ```
 
-**3. Run GitHub Actions workflow:**
+**2. Run GitHub Actions workflow:**
 1. Go to **Actions** → **Deploy LabLink Infrastructure**
 2. Click **Run workflow**
 3. Select environment: **`test`**
 4. Click **Run workflow**
 
-**4. Monitor deployment** (~20-30 minutes):
+**3. Monitor deployment** (~20-30 minutes):
 - Watch workflow progress in GitHub Actions
 - Look for ✅ green checkmarks on each step
 
-**5. Download SSH key:**
+**4. Download SSH key:**
 - Go to workflow run → Artifacts
 - Download `lablink-key-test`
 - Extract `lablink-key.pem`
 
-**6. Verify deployment:**
+**5. Verify deployment:**
 
 **DNS Resolution:**
 ```bash

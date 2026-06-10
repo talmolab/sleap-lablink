@@ -85,13 +85,11 @@ Use this checklist to ensure you have completed all required setup steps before 
 
 **DNS Settings:**
 - [x] Set `enabled: true`
-- [x] Updated `domain` to `lablink.sleap.ai`
 - [x] Set `dns.domain: "test.lablink.sleap.ai"` (full domain)
 - [x] Set `zone_id: "Z010760118DSWF5IYKMOM"`
 - [x] Set `terraform_managed: false` (manual DNS records in Route 53)
 
 **SSL Settings:**
-- [x] Set `provider: "letsencrypt"` for auto-SSL with Caddy
 - [x] Updated `email` to `admin@sleap.ai` for Let's Encrypt notifications
 - [x] Set `ssl.provider: "none"` for testing (HTTP only, unlimited deployments)
   - Note: Set to `letsencrypt` for production HTTPS with trusted certs

@@ -35,10 +35,8 @@ SLEAP LabLink automates deployment and management of cloud-based VMs for SLEAP p
 
 ### Deploy to Test (Staging)
 
-**1. Copy test configuration:**
+**1. Commit and push (test is the default active config):**
 ```bash
-cd lablink-infrastructure
-cp config/config-test.yaml config/config.yaml
 git add config/config.yaml
 git commit -m "Configure for test deployment"
 git push
@@ -57,10 +55,9 @@ git push
 
 ### Deploy to Production
 
-**1. Copy production configuration:**
+**1. Edit config for production and push:**
 ```bash
-cd lablink-infrastructure
-cp config/config-prod.yaml config/config.yaml
+# For prod: edit config.yaml (machine.image versioned, allocator.image_tag pinned, dns.domain=lablink.sleap.ai, ssl.provider=letsencrypt) before deploying
 git add config/config.yaml
 git commit -m "Configure for production deployment"
 git push
@@ -201,7 +198,7 @@ aws ec2 create-tags \
   --tags Key=Name,Value=lablink-eip
 ```
 
-Update `eip.tag_name` in `config.yaml` if using a different tag name.
+The EIP name tag is derived automatically as `{deployment_name}-eip-{environment}` (e.g. `sleap-lablink-eip-test`).
 
 ### 3. (Optional) Set Up Route 53 for DNS
 
@@ -278,36 +275,30 @@ app:
 dns:
   enabled: false  # true to use DNS, false for IP-only
   terraform_managed: false  # true = Terraform creates records
-  domain: "lablink.example.com"
+  domain: "test.lablink.sleap.ai"  # full domain (e.g. test.lablink.sleap.ai)
   zone_id: ""  # Leave empty for auto-lookup
-  app_name: "lablink"
-  pattern: "auto"  # "auto" or "custom"
 ```
-
-**DNS Patterns**:
-- `auto`: Creates `{env}.{app_name}.{domain}` (e.g., `test.lablink.example.com`)
-- `custom`: Uses `custom_subdomain` value
 
 ### SSL/TLS Settings
 
 ```yaml
 ssl:
-  provider: "none"  # "letsencrypt", "cloudflare", or "none"
+  provider: "none"  # "none"=HTTP, "letsencrypt", "cloudflare", "acm"
   email: "admin@example.com"  # For Let's Encrypt notifications
-  staging: true  # true = staging certs, false = production certs
+  certificate_arn: ""  # required when provider="acm"
 ```
 
 **SSL Providers**:
 - `none`: HTTP only (for testing)
 - `letsencrypt`: Automatic SSL with Caddy
 - `cloudflare`: Use CloudFlare proxy for SSL
+- `acm`: AWS Certificate Manager (requires `certificate_arn`)
 
 ### Elastic IP Settings
 
 ```yaml
 eip:
-  strategy: "persistent"  # "persistent" or "dynamic"
-  tag_name: "lablink-eip"  # Tag to find reusable EIP
+  strategy: "persistent"  # reuse EIP tagged {deployment_name}-eip-{env}; or "dynamic" to create one
 ```
 
 ## Deployment Workflows
@@ -439,22 +430,25 @@ terraform force-unlock LOCK_ID
 ## Project Structure
 
 ```
-lablink-template/
+sleap-lablink/
 ├── .github/workflows/          # GitHub Actions workflows
 │   ├── terraform-deploy.yml    # Deploy infrastructure
 │   ├── terraform-destroy.yml   # Destroy infrastructure
 │   └── client-vm-infrastructure-test.yml
 ├── lablink-infrastructure/     # Terraform infrastructure
 │   ├── config/
-│   │   ├── config.yaml         # Main configuration
-│   │   └── example.config.yaml # Configuration reference
+│   │   ├── config.yaml         # Active configuration (single file)
+│   │   ├── example.config.yaml # Configuration reference
+│   │   └── *.example.yaml      # Per-flavor reference configs
 │   ├── main.tf                 # Core Terraform config
+│   ├── alb.tf                  # Application Load Balancer config
 │   ├── backend.tf              # Terraform backend
 │   ├── backend-*.hcl           # Environment-specific backends
-│   ├── terraform.tfvars        # Terraform variables
 │   ├── user_data.sh            # EC2 initialization script
-│   ├── verify-deployment.sh    # Deployment verification
 │   └── README.md               # Infrastructure documentation
+├── scripts/                    # Helper scripts
+│   ├── init-terraform.sh       # Initialize Terraform backend
+│   └── verify-deployment.sh    # Deployment verification
 ├── README.md                   # This file
 ├── DEPLOYMENT_CHECKLIST.md     # Pre-deployment checklist
 └── LICENSE

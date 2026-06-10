@@ -2,21 +2,23 @@
 
 This document lists all pre-provisioned AWS resources for SLEAP LabLink deployment in us-west-2.
 
+> **Migration note**: The migration to `deployment_name=sleap-lablink` allocates **new EIPs** tagged `sleap-lablink-eip-{env}`. The IDs/IPs listed in the Elastic IP section below are pre-migration and will be replaced after the first new deploy. For `eip.strategy: "persistent"`, the new EIP must be pre-allocated and tagged `Name=sleap-lablink-eip-{env}` AND `Environment={env}` before deploying, or Terraform will fail at plan time.
+
 ## Elastic IP Addresses
 
 ### Test Environment
-- **Name Tag**: `lablink-eip-test`
+- **Name Tag**: `lablink-eip-test` (pre-migration; superseded by `sleap-lablink-eip-test`)
 - **IP Address**: `54.214.215.124`
 - **Allocation ID**: `eipalloc-0fc32cd69d36f45dd`
 - **Region**: `us-west-2`
-- **Status**: Public IP
+- **Status**: Public IP (pre-migration; new EIP tagged `sleap-lablink-eip-test` required)
 
 ### Production Environment
-- **Name Tag**: `lablink-eip-prod`
+- **Name Tag**: `lablink-eip-prod` (pre-migration; superseded by `sleap-lablink-eip-prod`)
 - **IP Address**: `44.224.160.186`
 - **Allocation ID**: `eipalloc-0dac4adf5f4b71e4d`
 - **Region**: `us-west-2`
-- **Status**: Public IP
+- **Status**: Public IP (pre-migration; new EIP tagged `sleap-lablink-eip-prod` required)
 
 ## Amazon Machine Images (AMIs)
 
@@ -100,9 +102,9 @@ This means:
 
 **Environment to DNS Mapping:**
 - **Test**: `test.lablink.sleap.ai` → `54.214.215.124`
-  - Config: `custom_subdomain: "test"`
+  - Config: `dns.domain: "test.lablink.sleap.ai"`
 - **Production**: `lablink.sleap.ai` → `44.224.160.186`
-  - Config: `custom_subdomain: ""` (empty = root domain)
+  - Config: `dns.domain: "lablink.sleap.ai"`
 
 **Alternative - Terraform-Managed DNS:**
 If you prefer Terraform to create/destroy records automatically:
@@ -133,9 +135,9 @@ The following secrets must be configured in the GitHub repository:
 ## Notes
 
 ### EIP Tag Naming Convention
-- Terraform automatically appends the environment suffix to EIP tag names
-- Config uses `tag_name: "lablink-eip"` → Terraform looks for `lablink-eip-test` or `lablink-eip-prod`
-- No need to include environment suffix in config.yaml
+- EIP name tag is derived as `{deployment_name}-eip-{environment}` → `sleap-lablink-eip-test` / `sleap-lablink-eip-prod`
+- For `eip.strategy: "persistent"`, the EIP must be pre-allocated and tagged `Name=sleap-lablink-eip-{env}` AND `Environment={env}` before deploying
+- Terraform will fail at plan time if the EIP is absent (it does NOT auto-create for `persistent` strategy)
 
 ### AMI Updates
 - AMIs are custom-built and maintained by the SLEAP team

@@ -1,44 +1,92 @@
-variable "resource_suffix" {
-  description = "Suffix to append to all resources"
+variable "region" {
+  description = "AWS region for the deployment"
   type        = string
-  default     = "prod"
+  default     = "us-west-2"
 }
 
-variable "config_path" {
-  description = "Path to the allocator config file"
+variable "deployment_name" {
+  description = "Unique name for this deployment (e.g., sleap-lablink, deeplabcut-lablink). Used as prefix for all resources."
   type        = string
-  default     = "config/config.yaml"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]*[a-z0-9]$", var.deployment_name)) && length(var.deployment_name) >= 3 && length(var.deployment_name) <= 32
+    error_message = "deployment_name must be 3-32 characters, lowercase kebab-case (e.g., 'sleap-lablink')."
+  }
+}
+
+variable "environment" {
+  description = "Deployment environment (e.g., dev, test, ci-test, prod)"
+  type        = string
+  default     = "prod"
+
+  validation {
+    condition     = contains(["dev", "test", "ci-test", "prod"], var.environment)
+    error_message = "environment must be one of: dev, test, ci-test, prod."
+  }
+}
+
+variable "repository" {
+  description = "Source repository for traceability (e.g., talmolab/sleap-lablink). Optional."
+  type        = string
+  default     = ""
+}
+
+# Resource naming convention: {deployment_name}-{resource_type}-{environment}
+locals {
+  # Standard tags applied to all resources
+  common_tags = merge(
+    {
+      Environment = var.environment
+      Project     = var.deployment_name
+      ManagedBy   = "terraform"
+    },
+    var.repository != "" ? { Repository = var.repository } : {}
+  )
 }
 
 # Read configuration from YAML file
 locals {
-  config_file = yamldecode(file("${path.module}/${var.config_path}"))
+  config_file = yamldecode(file("${path.module}/config/config.yaml"))
 
   # DNS configuration from config.yaml
   dns_enabled           = try(local.config_file.dns.enabled, false)
   dns_terraform_managed = try(local.config_file.dns.terraform_managed, true) # default true for backwards compatibility
   dns_domain            = try(local.config_file.dns.domain, "")
   dns_zone_id           = try(local.config_file.dns.zone_id, "")
-  dns_app_name          = try(local.config_file.dns.app_name, "lablink")
-  dns_pattern           = try(local.config_file.dns.pattern, "auto")
-  dns_custom_subdomain  = try(local.config_file.dns.custom_subdomain, "")
-  dns_create_zone       = try(local.config_file.dns.create_zone, false)
 
   # EIP configuration from config.yaml
   eip_strategy = try(local.config_file.eip.strategy, "dynamic")
-  eip_tag_name = try(local.config_file.eip.tag_name, "lablink-eip")
 
   # SSL configuration from config.yaml
-  ssl_provider = try(local.config_file.ssl.provider, "letsencrypt")
-  ssl_email    = try(local.config_file.ssl.email, "")
-  ssl_staging  = try(local.config_file.ssl.staging, false)
+  ssl_provider        = try(local.config_file.ssl.provider, "none")
+  ssl_email           = try(local.config_file.ssl.email, "")
+  ssl_certificate_arn = try(local.config_file.ssl.certificate_arn, "")
+
+  # Allocator configuration from config.yaml
+  allocator_image_tag = try(local.config_file.allocator.image_tag, "linux-amd64-latest-test")
+
+  # Custom Startup Script
+  startup_enabled  = try(local.config_file.startup_script.enabled, false)
+  startup_path     = try(local.config_file.startup_script.path, "config/custom-startup.sh")
+  startup_on_error = try(local.config_file.startup_script.on_error, "continue")
+
+  startup_script_content = (
+    local.startup_enabled && local.startup_path != "" ? (
+      fileexists("${path.module}/${local.startup_path}") ?
+      file("${path.module}/${local.startup_path}") : ""
+    ) : ""
+  )
+
+  # Base64 encode startup script to preserve $ and other special characters
+  # This prevents bash from expanding variables when user_data.sh runs
+  startup_script_b64 = local.startup_script_content != "" ? base64encode(local.startup_script_content) : ""
 
   # Bucket name from config.yaml for S3 backend
   bucket_name = try(local.config_file.bucket_name, "tf-state-lablink-allocator-bucket")
 }
 
 provider "aws" {
-  region = "us-west-2"
+  region = var.region
 }
 
 # Get the current AWS account ID
@@ -49,12 +97,6 @@ data "aws_iam_policy_document" "s3_backend_doc" {
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
     resources = ["arn:aws:s3:::${local.bucket_name}"]
-
-    condition {
-      test     = "StringLike"
-      variable = "s3:prefix"
-      values   = ["${var.resource_suffix}/*"]
-    }
   }
 
   # Read/Write/Delete objects under the prefix
@@ -62,7 +104,7 @@ data "aws_iam_policy_document" "s3_backend_doc" {
     effect  = "Allow"
     actions = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"]
     resources = [
-      "arn:aws:s3:::${local.bucket_name}/${var.resource_suffix}/*"
+      "arn:aws:s3:::${local.bucket_name}/${var.deployment_name}/${var.environment}/*"
     ]
   }
 
@@ -75,19 +117,86 @@ data "aws_iam_policy_document" "s3_backend_doc" {
       "dynamodb:DeleteItem"
     ]
     resources = [
-      "arn:aws:dynamodb:us-west-2:${data.aws_caller_identity.current.account_id}:table/lock-table"
+      "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/lock-table"
     ]
   }
 }
 
+data "aws_iam_policy_document" "ec2_vm_management_doc" {
+  # EC2 permissions for VM lifecycle management
+  statement {
+    effect = "Allow"
+    actions = [
+      "ec2:RunInstances",
+      "ec2:TerminateInstances",
+      "ec2:DescribeInstances",
+      "ec2:DescribeInstanceStatus",
+      "ec2:CreateTags",
+      "ec2:DescribeSecurityGroups",
+      "ec2:DescribeSubnets",
+      "ec2:DescribeKeyPairs",
+      "ec2:CreateSecurityGroup",
+      "ec2:DeleteSecurityGroup",
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:RevokeSecurityGroupIngress",
+      "ec2:RevokeSecurityGroupEgress",
+      "ec2:AuthorizeSecurityGroupEgress",
+      "ec2:CreateKeyPair",
+      "ec2:DeleteKeyPair",
+      "ec2:ImportKeyPair",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DescribeInstanceTypes",
+      "ec2:DescribeImages",
+      "ec2:DescribeTags",
+      "ec2:DescribeVolumes",
+      "ec2:DescribeInstanceAttribute",
+    ]
+    resources = ["*"]
+  }
 
-# Zip the Lambda function code
-# To package the Lambda function into a zip file
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_file = "${path.module}/lambda_function.py"
-  output_path = "${path.module}/lambda_package.zip"
+  # IAM permissions for creating VM roles
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:CreateRole",
+      "iam:DeleteRole",
+      "iam:GetRole",
+      "iam:TagRole",
+      "iam:UntagRole",
+      "iam:CreateInstanceProfile",
+      "iam:DeleteInstanceProfile",
+      "iam:TagInstanceProfile",
+      "iam:UntagInstanceProfile",
+      "iam:AddRoleToInstanceProfile",
+      "iam:RemoveRoleFromInstanceProfile",
+      "iam:ListRolePolicies",
+      "iam:ListAttachedRolePolicies",
+      "iam:ListInstanceProfilesForRole",
+      "iam:GetInstanceProfile"
+    ]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*-client-*-vm-role",
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:instance-profile/*-client-*-instance-profile"
+    ]
+  }
+
+  # Allow passing the VM role to created EC2 instances
+  statement {
+    effect = "Allow"
+    actions = [
+      "iam:PassRole"
+    ]
+    resources = [
+      "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/*-client-*-vm-role"
+    ]
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PassedToService"
+      values   = ["ec2.amazonaws.com"]
+    }
+  }
 }
+
 
 # Generate a new private key
 resource "tls_private_key" "lablink_key" {
@@ -97,12 +206,16 @@ resource "tls_private_key" "lablink_key" {
 
 # Register the public key with AWS
 resource "aws_key_pair" "lablink_key_pair" {
-  key_name   = "lablink-key-${var.resource_suffix}"
+  key_name   = "${var.deployment_name}-keypair-${var.environment}"
   public_key = tls_private_key.lablink_key.public_key_openssh
+
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-keypair-${var.environment}"
+  })
 }
 
 resource "aws_security_group" "allow_http" {
-  name = "allow_http_https_${var.resource_suffix}"
+  name = "${var.deployment_name}-allocator-sg-${var.environment}"
 
   ingress {
     from_port   = 80
@@ -119,6 +232,14 @@ resource "aws_security_group" "allow_http" {
   }
 
   ingress {
+    from_port   = 5000
+    to_port     = 5000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow direct access to allocator service"
+  }
+
+  ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -132,15 +253,9 @@ resource "aws_security_group" "allow_http" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name = "allow_http_https_${var.resource_suffix}"
-  }
-}
-
-variable "allocator_image_tag" {
-  description = "Docker image tag for the lablink allocator"
-  type        = string
-  default     = "linux-amd64-latest-test"
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-allocator-sg-${var.environment}"
+  })
 }
 
 resource "aws_instance" "lablink_allocator_server" {
@@ -150,21 +265,25 @@ resource "aws_instance" "lablink_allocator_server" {
   key_name             = aws_key_pair.lablink_key_pair.key_name
   iam_instance_profile = aws_iam_instance_profile.allocator_instance_profile.name
 
-  user_data = templatefile("${path.module}/user_data.sh", {
-    ALLOCATOR_IMAGE_TAG  = var.allocator_image_tag
-    RESOURCE_SUFFIX      = var.resource_suffix
-    ALLOCATOR_PUBLIC_IP  = local.eip_public_ip
-    ALLOCATOR_KEY_NAME   = aws_key_pair.lablink_key_pair.key_name
-    CLOUD_INIT_LOG_GROUP = aws_cloudwatch_log_group.client_vm_logs.name
-    CONFIG_CONTENT       = file("${path.module}/${var.config_path}")
-    DOMAIN_NAME          = local.fqdn
-    SSL_STAGING          = local.ssl_staging
-  })
+  user_data_base64 = base64gzip(templatefile("${path.module}/user_data.sh", {
+    ALLOCATOR_IMAGE_TAG       = local.allocator_image_tag
+    RESOURCE_SUFFIX           = var.environment
+    ALLOCATOR_PUBLIC_IP       = local.eip_public_ip
+    ALLOCATOR_KEY_NAME        = aws_key_pair.lablink_key_pair.key_name
+    LOG_GROUP                 = "${var.deployment_name}-client-logs-${var.environment}"
+    CONFIG_CONTENT            = file("${path.module}/config/config.yaml")
+    CLIENT_STARTUP_SCRIPT_B64 = local.startup_script_b64
+    STARTUP_ENABLED           = local.startup_enabled
+    ALLOCATOR_FQDN            = local.allocator_fqdn
+    INSTALL_CADDY             = local.install_caddy
+    SSL_PROVIDER              = local.ssl_provider
+    SSL_EMAIL                 = local.ssl_email
+    DOMAIN_NAME               = local.install_caddy ? local.dns_domain : ""
+  }))
 
-  tags = {
-    Name        = "lablink_allocator_server_${var.resource_suffix}"
-    Environment = var.resource_suffix
-  }
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-allocator-${var.environment}"
+  })
 }
 
 # EIP Lookup (for persistent strategy - reuse existing tagged EIP)
@@ -172,8 +291,8 @@ data "aws_eip" "existing" {
   count = local.eip_strategy == "persistent" ? 1 : 0
 
   tags = {
-    Name        = "${local.eip_tag_name}-${var.resource_suffix}"
-    Environment = var.resource_suffix
+    Name        = "${var.deployment_name}-eip-${var.environment}"
+    Environment = var.environment
   }
 }
 
@@ -182,10 +301,9 @@ resource "aws_eip" "new" {
   count  = local.eip_strategy == "dynamic" ? 1 : 0
   domain = "vpc"
 
-  tags = {
-    Name        = "lablink-eip-${var.resource_suffix}"
-    Environment = var.resource_suffix
-  }
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-eip-${var.environment}"
+  })
 }
 
 # Determine which EIP to use based on strategy
@@ -194,45 +312,54 @@ locals {
   eip_public_ip     = local.eip_strategy == "persistent" ? data.aws_eip.existing[0].public_ip : aws_eip.new[0].public_ip
 }
 
+# Extract base zone name from full domain for zone lookup
+# For "test.lablink.sleap.ai" → find zone for "lablink.sleap.ai." or "sleap.ai."
+locals {
+  # Split domain by dots and progressively check parent zones
+  domain_parts = split(".", local.dns_domain)
+  # For sub-subdomains, try parent domains (e.g., test.lablink.sleap.ai → lablink.sleap.ai)
+  # IMPORTANT: This only removes the first subdomain part. If the parent zone doesn't exist
+  # (e.g., you specify test.lablink.sleap.ai but only sleap.ai zone exists), lookup will fail.
+  # In that case, either create the intermediate zone or provide zone_id explicitly in config.
+  dns_zone_name = local.dns_enabled && local.dns_domain != "" && length(local.domain_parts) > 2 ? join(".", slice(local.domain_parts, 1, length(local.domain_parts))) : local.dns_domain
+}
+
 # DNS Zone Lookup (if using existing zone)
-# AWS Route53 zone lookup matches EXACT zone name only
-# If lablink.example.com zone exists, it will ONLY match "lablink.example.com."
-# If it doesn't exist, it will fail (not fall back to parent zone)
+# AWS Route53 zone lookup finds the hosted zone that contains dns.domain
+# For dns.domain="test.lablink.sleap.ai", it will look for zone "lablink.sleap.ai." or "sleap.ai."
+# Skip lookup if zone_id is already provided in config (avoids lookup errors)
+# NOTE: AWS Route53 data source automatically handles trailing dots - both "example.com"
+# and "example.com." will match the zone. No need to append trailing dot explicitly.
 data "aws_route53_zone" "existing" {
-  count        = local.dns_enabled && !local.dns_create_zone ? 1 : 0
-  name         = "${local.dns_domain}."
+  count        = local.dns_enabled && local.dns_zone_id == "" ? 1 : 0
+  name         = local.dns_zone_name
   private_zone = false
 }
 
-# DNS Zone Creation (if creating new zone)
-resource "aws_route53_zone" "new" {
-  count = local.dns_enabled && local.dns_create_zone ? 1 : 0
-  name  = local.dns_domain
-
-  tags = {
-    Name        = "lablink-zone-${var.resource_suffix}"
-    Environment = var.resource_suffix
-  }
-}
-
-# Generate FQDN based on environment and DNS settings from config.yaml
+# Compute FQDN, allocator URL, and other derived values
 locals {
-  # Subdomain pattern: auto generates prod.lablink or test.lablink, custom uses custom_subdomain
-  subdomain = local.dns_pattern == "custom" ? local.dns_custom_subdomain : (
-    var.resource_suffix == "prod" ? local.dns_app_name : "${var.resource_suffix}.${local.dns_app_name}"
+  # FQDN is the dns.domain directly (no pattern logic)
+  fqdn = local.dns_enabled ? local.dns_domain : local.eip_public_ip
+
+  # Zone ID from either config or lookup (priority: config > lookup)
+  # Use a placeholder value when DNS is disabled to avoid Terraform validation errors
+  zone_id = local.dns_enabled ? (
+    local.dns_zone_id != "" ? local.dns_zone_id : data.aws_route53_zone.existing[0].zone_id
+  ) : "Z0000000000000000000"
+
+  # Compute full allocator URL with protocol
+  # If DNS + SSL: https://{domain}
+  # If DNS without SSL: http://{domain}
+  # If no DNS: http://{ip}
+  allocator_fqdn = local.dns_enabled && contains(["letsencrypt", "cloudflare", "acm"], local.ssl_provider) ? "https://${local.dns_domain}" : (
+    local.dns_enabled ? "http://${local.dns_domain}" : "http://${local.eip_public_ip}"
   )
 
-  # Full domain name
-  fqdn = local.dns_enabled ? (
-    local.subdomain != "" ? "${local.subdomain}.${local.dns_domain}" : local.dns_domain
-  ) : "N/A"
+  # Conditional Caddy installation (only for letsencrypt and cloudflare)
+  install_caddy = contains(["letsencrypt", "cloudflare"], local.ssl_provider)
 
-  # Zone ID from either config, lookup, or creation (priority: config > create > lookup)
-  zone_id = local.dns_enabled ? (
-    local.dns_zone_id != "" ? local.dns_zone_id : (
-      local.dns_create_zone ? aws_route53_zone.new[0].zone_id : data.aws_route53_zone.existing[0].zone_id
-    )
-  ) : ""
+  # Conditional ALB creation (only for ACM)
+  create_alb = local.ssl_provider == "acm"
 
   allocator_instance_type = "t3.large"
 }
@@ -240,13 +367,19 @@ locals {
 # DNS A Record for the allocator
 # Only created when terraform_managed is true
 # If terraform_managed is false, you must manually create the A record in Route53
+# Points to EIP for direct EC2 access, or ALB for ACM SSL termination
 resource "aws_route53_record" "lablink_a_record" {
-  count   = local.dns_enabled && local.dns_terraform_managed ? 1 : 0
+  count   = local.dns_enabled && local.dns_terraform_managed && !local.create_alb ? 1 : 0
   zone_id = local.zone_id
-  name    = local.fqdn
+  name    = local.dns_domain
   type    = "A"
   ttl     = 300
   records = [local.eip_public_ip]
+
+  lifecycle {
+    # Prevent accidental deletion in production
+    prevent_destroy = false # Set to true for production environments
+  }
 }
 
 # Associate Elastic IP with EC2 instance
@@ -255,41 +388,26 @@ resource "aws_eip_association" "lablink_allocator_ip_assoc" {
   allocation_id = local.eip_allocation_id
 }
 
-# CloudWatch Log Groups for Client VMs
-resource "aws_cloudwatch_log_group" "client_vm_logs" {
-  name              = "lablink-cloud-init-${var.resource_suffix}"
-  retention_in_days = 30
-}
+resource "aws_iam_policy" "s3_backend_policy" {
+  name   = "${var.deployment_name}-s3-backend-policy-${var.environment}"
+  policy = data.aws_iam_policy_document.s3_backend_doc.json
 
-# CloudWatch Log Group for Lambda logs
-resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/lablink_log_processor_${var.resource_suffix}"
-  retention_in_days = 14
-}
-
-# IAM Role for Lambda
-resource "aws_iam_role" "lambda_exec" {
-  name = "lablink_lambda_exec_${var.resource_suffix}"
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { Service = "lambda.amazonaws.com" }
-        Action    = "sts:AssumeRole"
-      },
-    ]
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-s3-backend-policy-${var.environment}"
   })
 }
 
+resource "aws_iam_policy" "ec2_vm_management_policy" {
+  name   = "${var.deployment_name}-ec2-mgmt-policy-${var.environment}"
+  policy = data.aws_iam_policy_document.ec2_vm_management_doc.json
 
-resource "aws_iam_policy" "s3_backend_policy" {
-  name   = "lablink_s3_backend_${var.resource_suffix}"
-  policy = data.aws_iam_policy_document.s3_backend_doc.json
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-ec2-mgmt-policy-${var.environment}"
+  })
 }
 
 resource "aws_iam_role" "instance_role" {
-  name = "lablink_instance_role_${var.resource_suffix}"
+  name = "${var.deployment_name}-allocator-role-${var.environment}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17",
@@ -299,6 +417,15 @@ resource "aws_iam_role" "instance_role" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-allocator-role-${var.environment}"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "attach_ec2_management" {
+  role       = aws_iam_role.instance_role.name
+  policy_arn = aws_iam_policy.ec2_vm_management_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "attach_s3_backend" {
@@ -307,50 +434,12 @@ resource "aws_iam_role_policy_attachment" "attach_s3_backend" {
 }
 
 resource "aws_iam_instance_profile" "allocator_instance_profile" {
-  name = "lablink_instance_profile_${var.resource_suffix}"
+  name = "${var.deployment_name}-allocator-profile-${var.environment}"
   role = aws_iam_role.instance_role.name
-}
 
-# Subscription filter to send CloudWatch logs to Lambda
-resource "aws_cloudwatch_log_subscription_filter" "lambda_subscription" {
-  name            = "lablink_lambda_subscription_${var.resource_suffix}"
-  filter_pattern  = ""
-  destination_arn = aws_lambda_function.log_processor.arn
-  log_group_name  = aws_cloudwatch_log_group.client_vm_logs.name
-  depends_on      = [aws_lambda_permission.allow_cloudwatch]
-}
-
-# Lambda function for processing logs
-# Lambda Function to process logs
-resource "aws_lambda_function" "log_processor" {
-  function_name    = "lablink_log_processor_${var.resource_suffix}"
-  role             = aws_iam_role.lambda_exec.arn
-  handler          = "lambda_function.lambda_handler"
-  runtime          = "python3.11"
-  filename         = data.archive_file.lambda_zip.output_path
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-  timeout          = 10
-  depends_on       = [aws_cloudwatch_log_group.lambda_logs]
-  environment {
-    variables = {
-      API_ENDPOINT = "${local.fqdn}/api/vm-logs"
-    }
-  }
-}
-
-# Permission to invoke the Lambda function from CloudWatch
-resource "aws_lambda_permission" "allow_cloudwatch" {
-  statement_id  = "AllowExecutionFromCloudWatch"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.log_processor.function_name
-  principal     = "logs.amazonaws.com"
-  source_arn    = "arn:aws:logs:us-west-2:${data.aws_caller_identity.current.account_id}:log-group:${aws_cloudwatch_log_group.client_vm_logs.name}:*"
-}
-
-# Attach basic execution role to Lambda
-resource "aws_iam_role_policy_attachment" "lambda_logs_policy" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  tags = merge(local.common_tags, {
+    Name = "${var.deployment_name}-allocator-profile-${var.environment}"
+  })
 }
 
 # Output the EC2 public IP
@@ -372,8 +461,8 @@ output "private_key_pem" {
 
 # Output the FQDN for the allocator
 output "allocator_fqdn" {
-  value       = local.fqdn
-  description = "The subdomain associated with the allocator EIP"
+  value       = local.allocator_fqdn
+  description = "The full URL (with protocol) to access the allocator service"
 }
 
 output "allocator_instance_type" {
@@ -390,15 +479,20 @@ output "allocator_instance_type" {
 # - A security group allowing inbound HTTP (port 80) and SSH (port 22) traffic.
 # - An association between the EC2 instance and the fixed EIP.
 #
-# DNS records are managed manually in Route 53.
-# - The EIP is manually mapped to either `lablink.example.com` (for prod) or
-#   `{resource_suffix}.lablink.example.com` (for dev, test, etc.).
-# Note: EIPs must be pre-allocated and tagged as "lablink-eip-prod", "lablink-eip-dev", etc.
+# DNS records are managed manually in Route 53 or via Terraform (dns.terraform_managed).
+#
+# Resource Naming Convention:
+# All resources follow the pattern: {deployment_name}-{resource-type}-{environment}
+# Example: sleap-lablink-allocator-prod, sleap-lablink-eip-dev
+#
+# For persistent EIP strategy, EIPs must be pre-allocated and tagged with the
+# matching name: {deployment_name}-eip-{environment}
 #
 # The container is pulled from GitHub Container Registry and exposed on port 5000,
 # which is made externally accessible via port 80 on the EC2 instance.
 #
-# The configuration is environment-aware, using the `resource_suffix` variable
-# to differentiate resource names and subdomains (e.g., `prod`, `dev`, `test`).
+# The configuration uses two variables:
+# - deployment_name: Unique identifier for this deployment (e.g., sleap-lablink)
+# - environment: The deployment environment (dev, test, ci-test, prod)
 #
 # Outputs include the EC2 public IP, SSH key name, and the generated private key (marked sensitive).

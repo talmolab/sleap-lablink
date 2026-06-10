@@ -1,0 +1,77 @@
+# LabLink Development Configuration
+# For local development and testing with local Terraform state
+# Copy to config.yaml when doing local development
+#
+# Usage:
+#   cp lablink-infrastructure/config/dev.example.yaml lablink-infrastructure/config/config.yaml
+#   # Edit config.yaml with your values
+#   cd lablink-infrastructure
+#   ../scripts/init-terraform.sh dev
+#   terraform apply -var="deployment_name=YOUR-DEPLOYMENT" -var="environment=dev"
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD" # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type (smaller for dev to save costs)
+  machine_type: "t3.medium" # Smaller, cheaper for testing
+
+  # Docker image for client VMs
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+
+  # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
+  ami_id: "ami-0601752c11b394251" # us-west-2 Ubuntu 24.04 custom AMI
+
+  # Git repository (use test data for dev)
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
+
+  # Software identifier
+  software: "sleap"
+
+  # File extension
+  extension: "slp"
+
+# Allocator service configuration
+allocator:
+  # Use latest test image for development
+  image_tag: "linux-amd64-latest-test"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD" # Injected from GitHub secret at deploy time
+  region: "us-west-2"
+
+dns:
+  # Disable DNS for local dev (use IP only)
+  enabled: false
+  terraform_managed: false
+  domain: "example.com" # Your base domain (not used when DNS disabled)
+  zone_id: ""
+
+eip:
+  # Always use dynamic for dev (don't reuse EIPs)
+  strategy: "dynamic"
+  # Use unique tag name to avoid conflicts with other environments
+  tag_name: "lablink-eip-dev-YOURNAME" # Replace YOURNAME with your username
+
+ssl:
+  # No SSL for local dev (HTTP only)
+  provider: "none"
+  email: "dev@example.com"
+  certificate_arn: ""
+
+startup_script:
+  enabled: false
+  path: ""
+  on_error: "continue"
+
+# S3 bucket NOT USED for dev environment (uses local state)
+# Dev uses backend-dev.hcl which stores state in ./terraform.tfstate
+# Leave this as-is - the value doesn't matter for dev
+bucket_name: "not-used-for-dev-environment"

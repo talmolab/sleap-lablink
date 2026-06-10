@@ -35,10 +35,8 @@ SLEAP LabLink automates deployment and management of cloud-based VMs for SLEAP p
 
 ### Deploy to Test (Staging)
 
-**1. Copy test configuration:**
+**1. Commit and push (test is the default active config):**
 ```bash
-cd lablink-infrastructure
-cp config/config-test.yaml config/config.yaml
 git add config/config.yaml
 git commit -m "Configure for test deployment"
 git push
@@ -57,10 +55,9 @@ git push
 
 ### Deploy to Production
 
-**1. Copy production configuration:**
+**1. Edit config for production and push:**
 ```bash
-cd lablink-infrastructure
-cp config/config-prod.yaml config/config.yaml
+# For prod: edit config.yaml (machine.image versioned, allocator.image_tag pinned, dns.domain=lablink.sleap.ai, ssl.provider=letsencrypt) before deploying
 git add config/config.yaml
 git commit -m "Configure for production deployment"
 git push
@@ -195,13 +192,13 @@ For persistent allocator IP address across deployments:
 # Allocate EIP
 aws ec2 allocate-address --domain vpc --region us-west-2
 
-# Tag it for reuse
+# Tag it for reuse (both tags are required for eip.strategy: "persistent")
 aws ec2 create-tags \
   --resources eipalloc-XXXXXXXX \
-  --tags Key=Name,Value=lablink-eip
+  --tags Key=Name,Value=sleap-lablink-eip-test Key=Environment,Value=test
 ```
 
-Update `eip.tag_name` in `config.yaml` if using a different tag name.
+Pre-allocate the EIP and tag it with **both** `Name=sleap-lablink-eip-{environment}` and `Environment={environment}` before deploying. Terraform fails at plan time if these tags are not found — it does not auto-create the EIP.
 
 ### 3. (Optional) Set Up Route 53 for DNS
 
@@ -246,7 +243,7 @@ db:
 ```yaml
 machine:
   machine_type: "g4dn.xlarge"  # AWS instance type
-  image: "ghcr.io/talmolab/lablink-client-base-image:latest"  # Docker image
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"  # Docker image
   ami_id: "ami-0601752c11b394251"  # Region-specific AMI
   repository: "https://github.com/YOUR_ORG/YOUR_REPO.git"  # Your code/data repo
   software: "your-software"  # Software identifier
@@ -278,36 +275,30 @@ app:
 dns:
   enabled: false  # true to use DNS, false for IP-only
   terraform_managed: false  # true = Terraform creates records
-  domain: "lablink.example.com"
+  domain: "test.lablink.sleap.ai"  # full domain (e.g. test.lablink.sleap.ai)
   zone_id: ""  # Leave empty for auto-lookup
-  app_name: "lablink"
-  pattern: "auto"  # "auto" or "custom"
 ```
-
-**DNS Patterns**:
-- `auto`: Creates `{env}.{app_name}.{domain}` (e.g., `test.lablink.example.com`)
-- `custom`: Uses `custom_subdomain` value
 
 ### SSL/TLS Settings
 
 ```yaml
 ssl:
-  provider: "none"  # "letsencrypt", "cloudflare", or "none"
+  provider: "none"  # "none"=HTTP, "letsencrypt", "cloudflare", "acm"
   email: "admin@example.com"  # For Let's Encrypt notifications
-  staging: true  # true = staging certs, false = production certs
+  certificate_arn: ""  # required when provider="acm"
 ```
 
 **SSL Providers**:
 - `none`: HTTP only (for testing)
 - `letsencrypt`: Automatic SSL with Caddy
 - `cloudflare`: Use CloudFlare proxy for SSL
+- `acm`: AWS Certificate Manager (requires `certificate_arn`)
 
 ### Elastic IP Settings
 
 ```yaml
 eip:
-  strategy: "persistent"  # "persistent" or "dynamic"
-  tag_name: "lablink-eip"  # Tag to find reusable EIP
+  strategy: "persistent"  # reuse EIP tagged {deployment_name}-eip-{env}; or "dynamic" to create one
 ```
 
 ## Deployment Workflows
@@ -321,8 +312,8 @@ Deploys or updates your LabLink infrastructure.
 - Automatic: Push to `test` branch
 
 **Inputs**:
+- `deployment_name`: e.g. `sleap-lablink`
 - `environment`: `test` or `prod`
-- `image_tag`: (Optional) Specific Docker image tag for prod
 
 **What it does**:
 1. Configures AWS credentials via OIDC
@@ -342,12 +333,17 @@ Deploys or updates your LabLink infrastructure.
 - `confirm_destroy`: Must type "yes" to confirm
 - `environment`: `test` or `prod`
 
-### Test Client VM Infrastructure
+### Config Validation
 
-Tests that client VMs can be provisioned correctly.
+Validates `config.yaml` for correctness on every pull request (`config-validation.yml`).
 
-**Triggers**:
-- Manual only
+**Triggers**: Pull request
+
+### Startup Script Validation
+
+Lints `custom-startup.sh` for shell errors on every pull request (`startup-script-validation.yml`).
+
+**Triggers**: Pull request
 
 ## Customization
 
@@ -439,22 +435,32 @@ terraform force-unlock LOCK_ID
 ## Project Structure
 
 ```
-lablink-template/
-├── .github/workflows/          # GitHub Actions workflows
-│   ├── terraform-deploy.yml    # Deploy infrastructure
-│   ├── terraform-destroy.yml   # Destroy infrastructure
-│   └── client-vm-infrastructure-test.yml
+sleap-lablink/
+├── .github/workflows/                      # GitHub Actions workflows
+│   ├── terraform-deploy.yml                # Deploy infrastructure
+│   ├── terraform-destroy.yml               # Destroy infrastructure
+│   ├── config-validation.yml               # Validate config.yaml on PR
+│   └── startup-script-validation.yml       # Lint custom-startup.sh on PR
 ├── lablink-infrastructure/     # Terraform infrastructure
 │   ├── config/
-│   │   ├── config.yaml         # Main configuration
-│   │   └── example.config.yaml # Configuration reference
+│   │   ├── config.yaml         # Active configuration (single file)
+│   │   ├── example.config.yaml # Configuration reference
+│   │   └── *.example.yaml      # Per-flavor reference configs
 │   ├── main.tf                 # Core Terraform config
+│   ├── alb.tf                  # Application Load Balancer config
 │   ├── backend.tf              # Terraform backend
 │   ├── backend-*.hcl           # Environment-specific backends
-│   ├── terraform.tfvars        # Terraform variables
 │   ├── user_data.sh            # EC2 initialization script
-│   ├── verify-deployment.sh    # Deployment verification
 │   └── README.md               # Infrastructure documentation
+├── scripts/                           # Helper scripts
+│   ├── setup.sh                       # Initial project setup
+│   ├── configure.sh                   # Configure project settings
+│   ├── init-terraform.sh              # Initialize Terraform backend
+│   ├── verify-deployment.sh           # Deployment verification
+│   ├── estimate-costs.sh              # Estimate AWS costs
+│   ├── cleanup-orphaned-resources.sh  # Remove orphaned AWS resources
+│   ├── validate-all-configs.sh        # Validate all config files (Linux/macOS)
+│   └── validate-all-configs.ps1       # Validate all config files (Windows)
 ├── README.md                   # This file
 ├── DEPLOYMENT_CHECKLIST.md     # Pre-deployment checklist
 └── LICENSE

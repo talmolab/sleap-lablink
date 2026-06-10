@@ -50,8 +50,8 @@ Use this checklist to ensure you have completed all required setup steps before 
 
 #### Elastic IP (Optional but Recommended)
 - [x] Allocated Elastic IP in AWS
-- [x] Tagged EIP with Name = `lablink-eip`
-- [x] Updated `eip.tag_name` in `config.yaml` (using default "lablink-eip")
+- [x] Tagged EIP with Name = `sleap-lablink-eip-test` (or `sleap-lablink-eip-prod`)
+- [x] Set `deployment_name=sleap-lablink` (EIP tag derived as `sleap-lablink-eip-{env}`)
 - [x] Using `eip.strategy: "persistent"` to reuse EIP across deployments
 
 #### Route 53 DNS
@@ -77,7 +77,7 @@ Use this checklist to ensure you have completed all required setup steps before 
   - Type: `g4dn.xlarge` (GPU instance for ML)
 - [x] Verified `ami_id` matches us-west-2 region
   - AMI: `ami-0601752c11b394251` (Ubuntu 24.04 + Docker + Nvidia)
-- [x] Using Docker image: `ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test`
+- [x] Using Docker image: `ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test`
 
 **Application Settings:**
 - [x] Verified `region` matches `AWS_REGION` secret (us-west-2)
@@ -85,17 +85,14 @@ Use this checklist to ensure you have completed all required setup steps before 
 
 **DNS Settings:**
 - [x] Set `enabled: true`
-- [x] Updated `domain` to `lablink.sleap.ai`
-- [x] Chose `pattern: "custom"` with subdomain `test`
-  - Will create: `test.lablink.sleap.ai`
+- [x] Set `dns.domain: "test.lablink.sleap.ai"` (full domain)
 - [x] Set `zone_id: "Z010760118DSWF5IYKMOM"`
 - [x] Set `terraform_managed: false` (manual DNS records in Route 53)
 
 **SSL Settings:**
-- [x] Set `provider: "letsencrypt"` for auto-SSL with Caddy
 - [x] Updated `email` to `admin@sleap.ai` for Let's Encrypt notifications
-- [x] Set `staging: true` for testing (HTTP only, unlimited deployments)
-  - Note: Set to `false` for production HTTPS with trusted certs
+- [x] Set `ssl.provider: "none"` for testing (HTTP only, unlimited deployments)
+  - Note: Set to `letsencrypt` for production HTTPS with trusted certs
 
 **S3 Bucket:**
 - [x] Updated `bucket_name` to `tf-state-lablink-allocator-bucket`
@@ -149,15 +146,15 @@ Use this checklist to ensure you have completed all required setup steps before 
 - [ ] Web interface accessible via domain name
 
 ### SSL Verification (Staging Mode)
-- [ ] Note: `staging: true` means HTTP only (no SSL certificate)
+- [ ] Note: `ssl.provider: "none"` means HTTP only (no SSL certificate)
 - [ ] HTTP works without redirects to HTTPS
-- [ ] For production, set `staging: false` to enable HTTPS with Let's Encrypt
+- [ ] For production, set `ssl.provider: "letsencrypt"` to enable HTTPS with Let's Encrypt
 
 ### Functional Testing
 - [ ] Can create a test client VM from admin dashboard
 - [ ] Client VM provisions successfully with SLEAP configuration:
   - Instance type: `g4dn.xlarge` (GPU)
-  - Docker image: `ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test`
+  - Docker image: `ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test`
   - SLEAP tutorial data cloned from repository
 - [ ] Client VM appears in "View Instances" page
 - [ ] Can access client VM via Chrome Remote Desktop
@@ -182,7 +179,7 @@ Use this checklist to ensure you have completed all required setup steps before 
 2. Verify IAM role has necessary permissions for that resource
 3. For AMI errors: Verify `ami-0601752c11b394251` exists in us-west-2
 4. For network errors: Check VPC/subnet settings
-5. For EIP errors: Verify EIP is tagged with `lablink-eip`
+5. For EIP errors: Verify EIP is tagged `Name=sleap-lablink-eip-{env}` and `Environment={env}`
 
 ### If DNS doesn't resolve:
 1. Wait 5-10 minutes for DNS propagation

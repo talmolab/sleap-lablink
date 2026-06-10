@@ -1,0 +1,76 @@
+# LabLink Test Environment Configuration
+# For staging/pre-production testing with S3 backend
+# Copy to config.yaml for test deployments
+#
+# Usage:
+#   cp lablink-infrastructure/config/test.example.yaml lablink-infrastructure/config/config.yaml
+#   # Edit config.yaml with your values
+#   ./scripts/setup-aws-infrastructure.sh  # Creates S3, DynamoDB, Route53
+#   cd lablink-infrastructure
+#   ../scripts/init-terraform.sh test
+#   terraform apply -var="deployment_name=YOUR-DEPLOYMENT" -var="environment=test"
+
+db:
+  dbname: "lablink_db"
+  user: "lablink"
+  password: "PLACEHOLDER_DB_PASSWORD" # Injected from GitHub secret at deploy time
+  host: "localhost"
+  port: 5432
+  table_name: "vms"
+  message_channel: "vm_updates"
+
+machine:
+  # Client VM instance type
+  machine_type: "g4dn.xlarge" # GPU instance for ML workloads
+
+  # Docker image for client VMs (use test tags)
+  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+
+  # AMI ID for your AWS region (Ubuntu 24.04 with Docker + Nvidia GPU Driver)
+  ami_id: "ami-0601752c11b394251" # us-west-2 Ubuntu 24.04 custom AMI
+
+  # Git repository with test/tutorial data
+  repository: "https://github.com/talmolab/sleap-tutorial-data.git"
+
+  # Software identifier
+  software: "sleap"
+
+  # File extension
+  extension: "slp"
+
+# Allocator service configuration
+allocator:
+  # Use latest test image for test environment
+  image_tag: "linux-amd64-latest-test"
+
+app:
+  admin_user: "admin"
+  admin_password: "PLACEHOLDER_ADMIN_PASSWORD" # Injected from GitHub secret at deploy time
+  region: "us-west-2"
+
+dns:
+  # Enable DNS for test environment
+  enabled: true
+  terraform_managed: true # Let Terraform manage DNS records
+  domain: "example.com" # Your base domain (Route53 hosted zone)
+  zone_id: "" # Will be set by setup-aws-infrastructure.sh
+
+eip:
+  # Use persistent EIP for test (keeps same IP across redeploys)
+  strategy: "persistent" # Reuses existing EIP with matching tag
+  tag_name: "lablink-eip" # Will become lablink-eip-test
+
+ssl:
+  # Use Let's Encrypt for test environment
+  provider: "letsencrypt"
+  email: "admin@example.com" # Your email for Let's Encrypt notifications
+  certificate_arn: "" # Not used for letsencrypt
+
+startup_script:
+  enabled: false
+  path: ""
+  on_error: "continue"
+
+# S3 bucket for Terraform state (must be unique across ALL of AWS)
+# Example: if your org is "acme", use "tf-state-lablink-acme"
+bucket_name: "tf-state-lablink-YOURORG" # Replace YOURORG with something unique

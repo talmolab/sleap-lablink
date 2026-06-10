@@ -14,8 +14,8 @@ If you plan to deploy via GitHub Actions workflows, you must configure one repos
 2. **Click "New repository secret"**
 3. **Add the following secret:**
 
-   | Name | Value | Description |
-   |------|-------|-------------|
+   | Name           | Value                                              | Description                          |
+   | -------------- | -------------------------------------------------- | ------------------------------------ |
    | `AWS_ROLE_ARN` | `arn:aws:iam::YOUR-ACCOUNT-ID:role/YOUR-ROLE-NAME` | IAM role ARN for OIDC authentication |
 
 **How to create the AWS IAM role for OIDC:**
@@ -65,6 +65,7 @@ aws iam get-role \
 **Note:** If deploying locally with Terraform (not via GitHub Actions), you don't need this secret. Just configure AWS CLI credentials instead.
 
 ### Prerequisites
+
 - AWS account with credentials configured
 - Terraform installed (v1.6.6+) for local deployments
 - Docker images available on GHCR (or use public LabLink images)
@@ -78,6 +79,7 @@ cp config/example.config.yaml config/config.yaml
 ```
 
 **Edit `config/config.yaml`:**
+
 - **REQUIRED**: Change `db.password` and `app.admin_password` (security!)
 - **REQUIRED**: Set `bucket_name` to a globally unique S3 bucket name (for test/prod)
 - Customize `machine.ami_id` for your AWS region
@@ -86,31 +88,32 @@ cp config/example.config.yaml config/config.yaml
 - Set `app.region` to your AWS region
 
 **Example configuration:**
+
 ```yaml
 db:
-  password: "YOUR-SECURE-DB-PASSWORD"  # CHANGE THIS!
+  password: "YOUR-SECURE-DB-PASSWORD" # CHANGE THIS!
 
 machine:
   machine_type: "g4dn.xlarge"
   image: "ghcr.io/talmolab/lablink-client-base-image:latest"
-  ami_id: "ami-0601752c11b394251"  # Ubuntu 24.04 with Docker + Nvidia (us-west-2)
+  ami_id: "ami-0601752c11b394251" # Ubuntu 24.04 with Docker + Nvidia (us-west-2)
   repository: "https://github.com/talmolab/sleap-tutorial-data.git"
   software: "sleap"
 
 app:
-  admin_password: "YOUR-SECURE-ADMIN-PASSWORD"  # CHANGE THIS!
+  admin_password: "YOUR-SECURE-ADMIN-PASSWORD" # CHANGE THIS!
   region: "us-west-2"
 
-bucket_name: "tf-state-lablink-yourname"  # Must be globally unique
+bucket_name: "tf-state-lablink-yourname" # Must be globally unique
 
 dns:
   enabled: true
   terraform_managed: true
   domain: "lablink.yourdomain.com"
-  zone_id: "Z..."  # Your Route 53 hosted zone ID
+  zone_id: "Z..." # Your Route 53 hosted zone ID
 
 ssl:
-  provider: "letsencrypt"  # or "cloudflare" or "none"
+  provider: "letsencrypt" # or "cloudflare" or "none"
   email: "admin@yourdomain.com"
 ```
 
@@ -120,9 +123,9 @@ ssl:
 
 ```bash
 # Initialize Terraform with automatic bucket configuration
-./init-terraform.sh dev   # Local state, no S3
-./init-terraform.sh test  # S3 backend, reads bucket from config.yaml
-./init-terraform.sh prod  # S3 backend, reads bucket from config.yaml
+../scripts/init-terraform.sh dev   # Local state, no S3
+../scripts/init-terraform.sh test  # S3 backend, reads bucket from config.yaml
+../scripts/init-terraform.sh prod  # S3 backend, reads bucket from config.yaml
 
 # Review changes
 terraform plan
@@ -150,15 +153,17 @@ terraform apply
 After deployment completes, you can verify everything is working:
 
 ```bash
-# Get outputs from Terraform
+# Config-aware mode (recommended) — auto-reads config.yaml + terraform outputs
+../scripts/verify-deployment.sh dev
+
+# Or with explicit domain and IP (backwards-compatible)
 DOMAIN=$(terraform output -raw allocator_fqdn)
 IP=$(terraform output -raw ec2_public_ip)
-
-# Run verification script
-./verify-deployment.sh "$DOMAIN" "$IP"
+../scripts/verify-deployment.sh "$DOMAIN" "$IP"
 ```
 
 The verification script checks:
+
 - DNS resolution (if domain configured)
 - HTTP connectivity
 - HTTPS/SSL certificate (if Let's Encrypt enabled)
@@ -166,12 +171,14 @@ The verification script checks:
 ### 4. Access Your Allocator
 
 **With DNS configured:**
+
 ```
 Allocator: https://lablink.yourdomain.com
 Admin UI:  https://lablink.yourdomain.com/admin
 ```
 
 **Without DNS (IP-only):**
+
 ```
 Allocator: http://<ec2-public-ip>:5000
 Admin UI:  http://<ec2-public-ip>:5000/admin
@@ -181,32 +188,33 @@ Admin UI:  http://<ec2-public-ip>:5000/admin
 
 - **Allocator EC2 Instance**: Runs LabLink allocator service (Flask app + PostgreSQL in Docker)
 - **Caddy Server**: Automatic HTTPS with Let's Encrypt SSL certificates
-- **Lambda Function**: Processes CloudWatch logs from client VMs
 - **Route 53 DNS**: Automatic DNS record management (if configured)
 - **Security Groups**: Network security rules
-- **IAM Roles**: Permissions for EC2 and CloudWatch logging
-- **CloudWatch Log Groups**: Centralized logging for troubleshooting
+- **IAM Roles**:
+  - **Allocator Instance Role**: A role for the allocator EC2 instance with permissions to manage the lifecycle of client VMs (run, terminate, tag, etc.) and their associated resources (IAM roles, instance profiles).
 
 ## Environments
 
 LabLink supports three deployment environments:
 
-| Environment | Backend State | Use Case | S3 Bucket Required? |
-|-------------|---------------|----------|---------------------|
-| `dev`       | Local file    | Local testing, experimentation | No |
-| `test`      | S3            | Staging, pre-production testing | Yes |
-| `prod`      | S3            | Production deployments | Yes |
+| Environment | Backend State | Use Case                        | S3 Bucket Required? |
+| ----------- | ------------- | ------------------------------- | ------------------- |
+| `dev`       | Local file    | Local testing, experimentation  | No                  |
+| `test`      | S3            | Staging, pre-production testing | Yes                 |
+| `prod`      | S3            | Production deployments          | Yes                 |
 
 Each environment maintains separate Terraform state to avoid conflicts.
 
 ## Configuration Reference
 
 ### Database (`db`)
+
 - `password`: PostgreSQL password (**CHANGE THIS!**)
 - `dbname`: Database name (default: `lablink_db`)
 - `user`: Database username (default: `lablink`)
 
 ### Machine Settings (`machine`)
+
 - `machine_type`: AWS EC2 instance type for client VMs (e.g., `g4dn.xlarge`, `g5.2xlarge`)
 - `image`: Docker image for client container (e.g., `ghcr.io/talmolab/lablink-client-base-image:latest`)
 - `ami_id`: Amazon Machine Image for client VMs (region-specific)
@@ -214,39 +222,46 @@ Each environment maintains separate Terraform state to avoid conflicts.
 - `software`: Software identifier (e.g., `sleap`)
 
 ### Application (`app`)
+
 - `admin_password`: Admin UI password (**CHANGE THIS!**)
 - `admin_user`: Admin username (default: `admin`)
 - `region`: AWS region (e.g., `us-west-2`)
 
 ### DNS Configuration (`dns`)
+
 - `enabled`: Enable DNS management (true/false)
 - `terraform_managed`: Let Terraform manage Route 53 records (true/false)
 - `domain`: Your domain name (e.g., `lablink.example.com`)
 - `zone_id`: Route 53 hosted zone ID (required if `terraform_managed: true`)
 
 ### SSL Configuration (`ssl`)
-- `provider`: SSL provider (`letsencrypt`, `cloudflare`, or `none`)
+
+- `provider`: SSL provider (`letsencrypt`, `cloudflare`, `acm`, or `none`)
 - `email`: Email for Let's Encrypt notifications
-- `staging`: When `true`, serve HTTP only for unlimited testing. When `false`, serve HTTPS with trusted Let's Encrypt certificates (rate limited to 5 duplicate certificates per week)
+- `certificate_arn`: Required when `provider="acm"` - ARN of ACM certificate
 
-**Staging Mode:**
-- Use `staging: true` for rapid infrastructure testing without SSL complications
-- Caddy serves HTTP only (no certificates, no redirects)
-- Client VMs connect via HTTP
-- Unlimited deployments per day
-- **Not for production use** - no encryption
+**SSL Provider Options:**
 
-**Production Mode:**
-- Use `staging: false` for production deployments
-- Caddy obtains trusted Let's Encrypt certificates
-- Serves HTTPS with automatic HTTP→HTTPS redirects
-- Subject to Let's Encrypt rate limits
+- `letsencrypt`: Caddy automatically obtains trusted Let's Encrypt certificates and serves HTTPS
+- `cloudflare`: CloudFlare proxy provides edge SSL. Caddy serves the origin over HTTPS with a self-signed cert (`tls internal`), compatible with CloudFlare's recommended **Full** mode (Full does not validate the origin cert). Also serves HTTP for Flexible mode. Use Full, not Full (strict).
+- `acm`: AWS Certificate Manager via Application Load Balancer (enterprise-grade SSL)
+- `none`: HTTP only (no SSL) - for testing purposes only
+
+**Note:** Let's Encrypt always uses production certificates (no staging mode). Rate limit is 50 certificates per registered domain per week.
 
 ### Terraform State (`bucket_name`)
+
 - S3 bucket name for Terraform state storage (test/prod only)
 - Must be globally unique
 
+### Startup Script (`startup_script`)
+
+- `enabled`: `true` to run the custom startup script on client VMs, `false` to disable.
+- `path`: Path to the custom startup script file. Default: `config/custom-startup.sh`.
+- `on_error`: Behavior on script error. `continue` (default) ignores errors, `fail` stops VM setup.
+
 **Additional Resources:**
+
 - [Configuration Guide](../docs/configuration.md#ssltls-options-ssl) - Detailed SSL configuration reference
 - [Troubleshooting](../docs/troubleshooting.md#browser-cannot-access-http-staging-mode) - Browser HSTS cache issues
 - [Security](../docs/security.md#staging-mode-security) - Security implications of staging mode
@@ -254,51 +269,81 @@ Each environment maintains separate Terraform state to avoid conflicts.
 ## Included Scripts
 
 ### `init-terraform.sh` (Optional Helper)
+
 Simplifies Terraform initialization by automatically reading the S3 bucket name from your config file.
 
 **Usage:**
+
 ```bash
-./init-terraform.sh [dev|test|prod]
+../scripts/init-terraform.sh [dev|test|prod|ci-test]
 ```
 
 **What it does:**
+
 - Reads `bucket_name` from `config/config.yaml`
 - Runs `terraform init` with appropriate backend configuration
 - Validates configuration before initializing
 
 **Equivalent manual command:**
+
 ```bash
 terraform init -backend-config=backend-test.hcl -backend-config="bucket=YOUR-BUCKET"
 ```
 
 ### `verify-deployment.sh` (Optional Manual Verification)
+
 Comprehensive deployment verification script for post-deployment testing.
 
 **Usage:**
+
 ```bash
-./verify-deployment.sh [domain] [ip]
+# Config-aware mode (recommended): reads config.yaml + terraform outputs automatically
+../scripts/verify-deployment.sh <environment>
+../scripts/verify-deployment.sh --ci <environment>
+
+# Backwards-compatible mode: explicit domain and IP
+../scripts/verify-deployment.sh <domain> <ip>
+../scripts/verify-deployment.sh --ci <domain> <ip>
 
 # Examples:
-./verify-deployment.sh test.lablink.sleap.ai 52.10.119.234
-./verify-deployment.sh "" 52.10.119.234  # IP-only deployment
+../scripts/verify-deployment.sh prod                                        # Config-aware
+../scripts/verify-deployment.sh --ci ci-test                                # Config-aware in CI
+../scripts/verify-deployment.sh test.lablink.sleap.ai 52.10.119.234         # Legacy mode
+../scripts/verify-deployment.sh "" 52.10.119.234                            # IP-only (legacy)
 ```
 
 **What it checks:**
+
 1. DNS resolution (waits up to 5 minutes for propagation)
 2. HTTP connectivity (waits for allocator to start)
 3. HTTPS/SSL certificate (waits for Let's Encrypt, if enabled)
 
 **When to use:**
+
 - After first deployment to verify everything works
 - When troubleshooting DNS or SSL issues
 - To confirm HTTPS certificate was obtained
 
 **Note:** GitHub Actions workflows include automatic verification, so this script is mainly for local deployments or manual troubleshooting.
 
+### `config/custom-startup.sh` (Customizable Client Startup)
+
+The `config/custom-startup.sh` script is a customizable script that is executed upon the startup of a client VM. This script provides a way to automate the setup and configuration of the client environment.
+
+**Customization:**
+You can add custom startup behavior by modifying the `config/custom-startup.sh` script. For example, you could:
+
+- Install additional software packages.
+- Start additional services.
+
+Any changes made to this script will be reflected in the client VMs upon their next startup.
+
 ### `user_data.sh` (Automatic - DO NOT RUN MANUALLY)
+
 EC2 instance initialization script embedded in Terraform configuration.
 
 **What it does:**
+
 - Installs Docker and Caddy on the allocator EC2 instance
 - Pulls the allocator Docker image
 - Starts the allocator container
@@ -323,23 +368,27 @@ AMI IDs are region-specific. If deploying to a different region:
 3. Update `machine.ami_id` in `config/config.yaml`
 
 **Pre-configured custom AMIs (us-west-2):**
+
 - Client VM: `ami-0601752c11b394251` (Ubuntu 24.04 + Docker + Nvidia GPU drivers)
 - Allocator VM: `ami-0bd08c9d4aa9f0bc6` (Ubuntu 24.04 + Docker)
 
 ## Using Custom Docker Images
 
 ### Option 1: Use LabLink Public Images
+
 ```yaml
 machine:
   image: "ghcr.io/talmolab/lablink-client-base-image:latest"
 ```
 
 **Available tags:**
+
 - `latest` - Latest stable release
 - `linux-amd64-test` - Latest development build
 - `0.0.8a0` - Specific version tag
 
 ### Option 2: Build Your Own Images
+
 1. Fork the [LabLink repository](https://github.com/talmolab/lablink)
 2. Customize the client package in `packages/client/`
 3. Build and publish your images via GitHub Actions
@@ -349,13 +398,16 @@ machine:
 
 This infrastructure can be deployed via GitHub Actions workflows:
 
-- **Deploy**: `.github/workflows/lablink-allocator-terraform.yml`
-- **Destroy**: `.github/workflows/lablink-allocator-destroy.yml`
+- **Deploy**: `.github/workflows/terraform-deploy.yml`
+- **Destroy**: `.github/workflows/terraform-destroy.yml`
+
+Both workflows authenticate to AWS using OIDC (no long-lived AWS keys in GitHub secrets) — see the [main README's OIDC section](../README.md#why-oidc-instead-of-long-lived-aws-keys) for how the role-assume flow works.
 
 See the workflows in the `.github` directory for automated deployment examples.
 
 ## Security Best Practices
 
+- ✅ **Secure the Allocator Instance**: The allocator EC2 instance has a powerful IAM role that allows it to create, terminate, and manage other EC2 instances. Unauthorized access to this instance could lead to misuse of AWS resources. Ensure that its security group is restricted to trusted IP addresses and that you follow all other security best practices to protect it.
 - ✅ **Change default passwords** in `config.yaml` before deploying
 - ✅ Use **IAM roles** instead of access keys when possible
 - ✅ Enable **S3 backend encryption** for production state files
@@ -369,24 +421,64 @@ See the workflows in the `.github` directory for automated deployment examples.
 ### Common Issues
 
 **DNS not resolving:**
+
 - Check Route 53 hosted zone exists and `zone_id` is correct
 - Wait up to 5 minutes for DNS propagation
 - Verify domain registrar nameservers point to Route 53
 
 **SSL certificate not obtained:**
+
 - Check DNS resolves correctly first (SSL requires valid DNS)
 - Verify port 80 and 443 are accessible (Let's Encrypt validation)
 - Check Caddy logs: `ssh ubuntu@<ip> sudo journalctl -u caddy -f`
 
 **Allocator not responding:**
+
 - Check Docker container is running: `ssh ubuntu@<ip> sudo docker ps`
 - View container logs: `ssh ubuntu@<ip> sudo docker logs $(sudo docker ps -q)`
 - Verify security group allows inbound traffic on port 5000
 
 **Terraform state locked:**
+
 - Check DynamoDB lock table in AWS console
 - Manually remove lock if workflow was interrupted
 - Use `terraform force-unlock <lock-id>` as last resort
+
+### Running Scripts Locally
+
+If you want to run the verification or other scripts locally (outside of CI), follow these steps:
+
+**Prerequisites:**
+
+```bash
+# 1. Navigate to the infrastructure directory
+cd lablink-infrastructure
+
+# 2. Ensure config/config.yaml exists
+cp config/example.config.yaml config/config.yaml  # if not already created
+
+# 3. Initialize Terraform for your environment
+../scripts/init-terraform.sh dev    # local state
+../scripts/init-terraform.sh test   # S3 backend
+
+# 4. Deploy (or have an existing deployment)
+terraform apply -var="deployment_name=YOUR-DEPLOYMENT" -var="environment=dev"
+```
+
+**Running verification:**
+
+```bash
+# From lablink-infrastructure/
+../scripts/verify-deployment.sh dev
+```
+
+**Common errors:**
+
+| Error                                                 | Cause                                             | Fix                                                                |
+| ----------------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------------ |
+| `Cannot find config/config.yaml`                      | Script not run from correct directory             | `cd lablink-infrastructure` first, or run from repo root           |
+| `Could not read ec2_public_ip from Terraform outputs` | Terraform not initialized or no deployment exists | Run `../scripts/init-terraform.sh <env>` then `terraform apply`    |
+| `nslookup: command not found`                         | Missing DNS tools                                 | Install `dnsutils` (Ubuntu) or `bind` (macOS: `brew install bind`) |
 
 ### Getting Help
 
@@ -396,6 +488,8 @@ See the workflows in the `.github` directory for automated deployment examples.
 
 ## Cleanup
 
+### Normal Destroy
+
 To destroy all infrastructure:
 
 ```bash
@@ -403,14 +497,36 @@ terraform destroy
 ```
 
 This removes:
+
 - Allocator EC2 instance
-- Lambda function
+- Elastic IP (if `eip.strategy = "dynamic"` — persistent EIPs are preserved)
+- Application Load Balancer (if `ssl.provider = "acm"`)
 - Security groups
-- Route 53 DNS records (if managed by Terraform)
-- CloudWatch log groups
-- IAM roles and policies
+- Route 53 DNS records (if `dns.terraform_managed = true`)
+- IAM roles, policies, and instance profile for the allocator
 
 **Note:** The S3 bucket for Terraform state is NOT deleted automatically. Delete it manually if no longer needed.
+
+### Cleanup Orphaned Resources
+
+If `terraform destroy` fails or leaves orphaned resources, use the automated cleanup script:
+
+```bash
+# From repository root
+./scripts/cleanup-orphaned-resources.sh <environment>
+
+# Example:
+./scripts/cleanup-orphaned-resources.sh test
+```
+
+The script automatically handles:
+
+- Reading configuration from `config/config.yaml`
+- Backing up Terraform state files before deletion
+- Deleting resources in correct dependency order
+- Dry-run mode for safe testing: `./scripts/cleanup-orphaned-resources.sh test --dry-run`
+
+For detailed manual cleanup procedures and troubleshooting, see [MANUAL_CLEANUP_GUIDE.md](../MANUAL_CLEANUP_GUIDE.md).
 
 ## Documentation
 

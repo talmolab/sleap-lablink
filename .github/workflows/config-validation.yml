@@ -1,0 +1,110 @@
+name: Validate Configuration
+
+on:
+  pull_request:
+    paths:
+      - "lablink-infrastructure/config/config.yaml"
+      - "lablink-infrastructure/config/*.example.yaml"
+
+  workflow_dispatch:
+    inputs:
+      config_path:
+        description: "Path to config file to validate"
+        required: false
+        default: "lablink-infrastructure/config/config.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-config:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Validate configuration
+        id: validate
+        run: |
+          # Determine which config files to validate
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual trigger: validate specified config
+            CONFIG_FILES="${{ github.event.inputs.config_path || 'lablink-infrastructure/config/config.yaml' }}"
+          else
+            # PR trigger: validate all changed config files
+            CONFIG_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }} | grep "^lablink-infrastructure/config/.*\.yaml$" || echo "lablink-infrastructure/config/config.yaml")
+          fi
+
+          echo "=== Configuration Validation ==="
+          echo "Changed config files: $CONFIG_FILES"
+          echo
+
+          # Validate each config file
+          EXIT_CODE=0
+          for CONFIG_PATH in $CONFIG_FILES; do
+            if [ ! -f "$CONFIG_PATH" ]; then
+              echo "⚠️  Skipping $CONFIG_PATH (file not found)"
+              continue
+            fi
+
+            echo "📋 Validating: $CONFIG_PATH"
+
+            # Extract allocator image tag from config
+            IMAGE_TAG=$(grep -A5 "^allocator:" "$CONFIG_PATH" | grep "image_tag:" | awk '{print $2}' | tr -d '"')
+
+            if [ -z "$IMAGE_TAG" ]; then
+              echo "❌ Error: allocator.image_tag not found in $CONFIG_PATH"
+              EXIT_CODE=1
+              continue
+            fi
+
+            ALLOCATOR_IMAGE="ghcr.io/talmolab/lablink-allocator-image:${IMAGE_TAG}"
+            echo "   Using image: $ALLOCATOR_IMAGE"
+
+            # Pull the allocator image (only once per unique tag)
+            docker pull "$ALLOCATOR_IMAGE" 2>/dev/null || true
+
+            # Create absolute path for config file
+            FULL_CONFIG_PATH="$(pwd)/$CONFIG_PATH"
+
+            # Run validation using the Docker image
+            if docker run --rm \
+              -v "$FULL_CONFIG_PATH:/config/config.yaml:ro" \
+              "$ALLOCATOR_IMAGE" \
+              uv run lablink-validate-config /config/config.yaml --verbose; then
+              echo "✅ $CONFIG_PATH passed validation"
+            else
+              echo "❌ $CONFIG_PATH failed validation"
+              EXIT_CODE=1
+            fi
+            echo
+          done
+
+          if [ $EXIT_CODE -ne 0 ]; then
+            echo "::error::One or more configuration files failed validation"
+            exit 1
+          fi
+
+          echo "✅ All configuration files passed validation"
+
+      - name: Report validation success
+        if: success()
+        run: |
+          echo "::notice::Configuration validation passed!"
+          echo "The config.yaml file is valid and ready for deployment."
+
+      - name: Report validation failure
+        if: failure()
+        run: |
+          echo "::error::Configuration validation failed!"
+          echo "Please review the error messages above and fix the configuration issues."
+          echo "You can run validation locally with:"
+          echo "  docker pull ghcr.io/talmolab/lablink-allocator-image:<your-image-tag>"
+          echo "  docker run --rm -v \"\$(pwd)/lablink-infrastructure/config/config.yaml:/config/config.yaml:ro\" \\"
+          echo "    ghcr.io/talmolab/lablink-allocator-image:<your-image-tag> \\"
+          echo "    uv run lablink-validate-config /config/config.yaml --verbose"
+          exit 1

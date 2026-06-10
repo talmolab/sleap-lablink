@@ -14,7 +14,7 @@ This guide covers deploying SLEAP LabLink to Dev, Test, and Production environme
 | **Purpose** | Local development | Staging/pre-production | Production |
 | **DNS** | None (IP only) | test.lablink.sleap.ai | lablink.sleap.ai |
 | **URL** | http://\<IP\>:5000 | http://test.lablink.sleap.ai | https://lablink.sleap.ai |
-| **EIP** | Dynamic (new each time) | lablink-eip-test<br/>54.214.215.124 | lablink-eip-prod<br/>44.224.160.186 |
+| **EIP** | Dynamic (new each time) | sleap-lablink-eip-test<br/>54.214.215.124 *(pre-migration; will change after new EIP deploy)* | sleap-lablink-eip-prod<br/>44.224.160.186 *(pre-migration; will change after new EIP deploy)* |
 | **SSL** | None (HTTP) | Staging (HTTP) | Let's Encrypt (HTTPS) |
 | **State** | Local file | S3 backend | S3 backend |
 | **Image Tag** | `latest-test` | `latest-test` | `latest` or version tag |
@@ -52,18 +52,9 @@ This guide covers deploying SLEAP LabLink to Dev, Test, and Production environme
 
 ## Environment Configurations
 
-Configuration files are in [`lablink-infrastructure/config/`](lablink-infrastructure/config/):
-
-| File | Environment | Description |
-|------|-------------|-------------|
-| `config-dev.yaml` | Dev | Local development template |
-| `config-test.yaml` | Test | Staging environment template |
-| `config-prod.yaml` | Prod | Production environment template |
-| `config.yaml` | Active | Currently active config (copy from above) |
+Configuration is in [`lablink-infrastructure/config/config.yaml`](lablink-infrastructure/config/config.yaml) — a **single active file**. The environment (`test` or `prod`) is selected at deploy time via the `environment` workflow input. Reference flavors are available as `*.example.yaml` files in the same directory (e.g. `test.example.yaml`, `prod.example.yaml`).
 
 ### Dev Configuration
-
-**File**: [`config-dev.yaml`](lablink-infrastructure/config/config-dev.yaml)
 
 **Key Settings:**
 ```yaml
@@ -77,53 +68,49 @@ ssl:
   provider: "none"  # HTTP only, no SSL
 
 machine:
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"
 ```
 
 **Access**: `http://<EC2_PUBLIC_IP>:5000`
 
 ### Test Configuration
 
-**File**: [`config-test.yaml`](lablink-infrastructure/config/config-test.yaml)
-
 **Key Settings:**
 ```yaml
 dns:
   enabled: true
-  custom_subdomain: "test"  # test.lablink.sleap.ai
+  domain: "test.lablink.sleap.ai"
 
 eip:
-  strategy: "persistent"  # Reuses lablink-eip-test
+  strategy: "persistent"  # Reuses sleap-lablink-eip-test
 
 ssl:
-  provider: "letsencrypt"
-  staging: true  # HTTP only (unlimited deployments)
+  provider: "none"  # HTTP only (unlimited deployments)
 
 machine:
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"
 ```
 
 **Access**: `http://test.lablink.sleap.ai`
 
 ### Production Configuration
 
-**File**: [`config-prod.yaml`](lablink-infrastructure/config/config-prod.yaml)
+Edit `config.yaml` before deploying to prod: pin `machine.image` to a versioned tag, pin `allocator.image_tag`, set `dns.domain=lablink.sleap.ai`, and set `ssl.provider=letsencrypt`.
 
 **Key Settings:**
 ```yaml
 dns:
   enabled: true
-  custom_subdomain: ""  # lablink.sleap.ai (root domain)
+  domain: "lablink.sleap.ai"
 
 eip:
-  strategy: "persistent"  # Reuses lablink-eip-prod
+  strategy: "persistent"  # Reuses sleap-lablink-eip-prod
 
 ssl:
-  provider: "letsencrypt"
-  staging: false  # HTTPS with trusted certificates (RATE LIMITED)
+  provider: "letsencrypt"  # HTTPS with trusted certificates (RATE LIMITED)
 
 machine:
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-<version>"
 ```
 
 **Access**: `https://lablink.sleap.ai`
@@ -134,13 +121,7 @@ machine:
 
 ### Deploy to Dev (Local)
 
-**1. Copy dev configuration:**
-```bash
-cd lablink-infrastructure
-cp config/config-dev.yaml config/config.yaml
-```
-
-**2. Set local passwords (in config.yaml):**
+**1. Set local passwords in config.yaml:**
 ```yaml
 db:
   password: "your-dev-db-password"  # Replace PLACEHOLDER
@@ -149,71 +130,68 @@ app:
   admin_password: "your-dev-admin-password"  # Replace PLACEHOLDER
 ```
 
-**3. Initialize Terraform:**
+**2. Initialize Terraform (run from `lablink-infrastructure/`):**
 ```bash
-./init-terraform.sh dev
+# From lablink-infrastructure/
+../scripts/init-terraform.sh \
+  dev
 ```
 
-**4. Deploy:**
+**3. Deploy:**
 ```bash
-terraform plan
-terraform apply
+terraform plan -var="deployment_name=sleap-lablink" -var="environment=dev"
+terraform apply -var="deployment_name=sleap-lablink" -var="environment=dev"
 ```
 
-**5. Get access information:**
+**4. Get access information:**
 ```bash
 terraform output ec2_public_ip
 # Access: http://<IP>:5000
 ```
 
-**6. Verify:**
+**5. Verify:**
 - SSH: `ssh -i lablink-key.pem ubuntu@<IP>`
 - Web: Navigate to `http://<IP>:5000/admin`
-- Login: username `admin`, password from step 2
+- Login: username `admin`, password from step 1
 
-**7. Destroy when done:**
+**6. Destroy when done:**
 ```bash
-terraform destroy
+terraform destroy -var="deployment_name=sleap-lablink" -var="environment=dev"
 ```
 
 ---
 
 ### Deploy to Test (GitHub Actions)
 
-**1. Copy test configuration:**
-```bash
-cd lablink-infrastructure
-cp config/config-test.yaml config/config.yaml
-```
-
-**2. Commit and push:**
+**1. Commit and push (test is the default active config — deploy as-is):**
 ```bash
 git add config/config.yaml
 git commit -m "Configure for test deployment"
 git push
 ```
 
-**3. Run GitHub Actions workflow:**
+**2. Run GitHub Actions workflow:**
 1. Go to **Actions** → **Deploy LabLink Infrastructure**
 2. Click **Run workflow**
 3. Select environment: **`test`**
 4. Click **Run workflow**
 
-**4. Monitor deployment** (~20-30 minutes):
+**3. Monitor deployment** (~20-30 minutes):
 - Watch workflow progress in GitHub Actions
 - Look for ✅ green checkmarks on each step
 
-**5. Download SSH key:**
+**4. Download SSH key:**
 - Go to workflow run → Artifacts
 - Download `lablink-key-test`
 - Extract `lablink-key.pem`
 
-**6. Verify deployment:**
+**5. Verify deployment:**
 
 **DNS Resolution:**
 ```bash
 nslookup test.lablink.sleap.ai
-# Should return: 54.214.215.124
+# Should return the IP from: terraform output -raw ec2_public_ip
+# (Pre-migration IP was 54.214.215.124 — this will change after new sleap-lablink-eip-test is deployed)
 ```
 
 **Web Access:**
@@ -242,24 +220,20 @@ ssh -i lablink-key.pem ubuntu@test.lablink.sleap.ai
 
 **⚠️ Important**: Test in Test environment first before deploying to production!
 
-**1. Copy production configuration:**
-```bash
-cd lablink-infrastructure
-cp config/config-prod.yaml config/config.yaml
-```
+**1. Edit `config.yaml` for production:** Set `machine.image` to a versioned tag, pin `allocator.image_tag`, set `dns.domain=lablink.sleap.ai`, and set `ssl.provider=letsencrypt`.
 
 **2. (Optional) Use specific image version:**
 
 Edit `config.yaml`:
 ```yaml
 machine:
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-v0.1.0"  # Specific version
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-<version>"  # Specific version
 ```
 
-Or keep `latest` for rolling updates:
+Or use the current release tag:
 ```yaml
 machine:
-  image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest"
+  image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-<version>"
 ```
 
 **3. Commit and push:**
@@ -273,8 +247,7 @@ git push
 1. Go to **Actions** → **Deploy LabLink Infrastructure**
 2. Click **Run workflow**
 3. Select environment: **`prod`**
-4. (Optional) Enter image tag if using specific version
-5. Click **Run workflow**
+4. Click **Run workflow**
 
 **5. Monitor deployment** (~25-35 minutes):
 - Deployment takes longer due to SSL certificate acquisition
@@ -290,7 +263,8 @@ git push
 **DNS Resolution:**
 ```bash
 nslookup lablink.sleap.ai
-# Should return: 44.224.160.186
+# Should return the IP from: terraform output -raw ec2_public_ip
+# (Pre-migration IP was 44.224.160.186 — this will change after new sleap-lablink-eip-prod is deployed)
 ```
 
 **HTTPS Access:**
@@ -341,20 +315,12 @@ ssh -i lablink-key.pem ubuntu@lablink.sleap.ai
 
 ## Switching Between Environments
 
-To switch configurations:
+The environment is selected at deploy time via the `environment` workflow input — there is no need to copy files. Edit `lablink-infrastructure/config/config.yaml` directly:
 
-```bash
-cd lablink-infrastructure
+- **Test**: Deploy with `environment=test` as-is; `dns.domain` should be `test.lablink.sleap.ai` and `ssl.provider` `none`.
+- **Prod**: Edit `config.yaml` to set `dns.domain=lablink.sleap.ai`, `ssl.provider=letsencrypt`, and pin image tags before deploying with `environment=prod`.
 
-# Switch to dev
-cp config/config-dev.yaml config/config.yaml
-
-# Switch to test
-cp config/config-test.yaml config/config.yaml
-
-# Switch to prod
-cp config/config-prod.yaml config/config.yaml
-```
+Reference `*.example.yaml` files in `lablink-infrastructure/config/` for per-flavor settings.
 
 **Important**: Always commit the updated `config.yaml` before running GitHub Actions workflows!
 
@@ -366,7 +332,7 @@ cp config/config-prod.yaml config/config.yaml
 
 ```bash
 cd lablink-infrastructure
-terraform destroy
+terraform destroy -var="deployment_name=sleap-lablink" -var="environment=dev"
 ```
 
 ### Destroy Test or Prod (GitHub Actions)
@@ -418,7 +384,7 @@ nslookup lablink.sleap.ai
 4. Verify ports 80 and 443 are accessible
 5. Check if rate limit hit (5 certs/week)
 
-**If rate limited**: Wait 7 days or switch to `staging: true`
+**If rate limited**: Wait 7 days or switch `ssl.provider` to `none` or `cloudflare`
 
 ### Can't Access Web Interface
 
@@ -443,9 +409,9 @@ nslookup lablink.sleap.ai
 
 **Solutions**:
 1. Verify correct `config.yaml` was committed
-2. Check `custom_subdomain` setting:
-   - Test: `"test"`
-   - Prod: `""` (empty string)
+2. Check `dns.domain` setting:
+   - Test: `"test.lablink.sleap.ai"`
+   - Prod: `"lablink.sleap.ai"`
 3. Verify correct environment selected in GitHub Actions
 4. Check Terraform output:
    ```bash
@@ -484,7 +450,7 @@ nslookup lablink.sleap.ai
 
 ### Configuration Management
 
-- ✅ Use template configs (`config-*.yaml`)
+- ✅ Use the `*.example.yaml` reference configs
 - ✅ Keep `config.yaml` in version control
 - ✅ Document which config is active
 - ✅ Test config changes in Dev/Test first
@@ -503,7 +469,7 @@ nslookup lablink.sleap.ai
 - ✅ Never commit passwords or keys
 - ✅ Use GitHub secrets for sensitive values
 - ✅ Rotate passwords regularly
-- ✅ Use HTTPS in production (`staging: false`)
+- ✅ Use HTTPS in production (`ssl.provider: "letsencrypt"`)
 - ✅ Restrict security group rules to known IPs (optional)
 
 ### Cost Management
@@ -544,23 +510,25 @@ ssh -i lablink-key.pem ubuntu@<EC2_IP>
 
 # Test
 ssh -i lablink-key.pem ubuntu@test.lablink.sleap.ai
-# or
-ssh -i lablink-key.pem ubuntu@54.214.215.124
+# or use IP from: terraform output -raw ec2_public_ip
+# (Pre-migration IP was 54.214.215.124 — will change after new sleap-lablink-eip-test deploy)
 
 # Prod
 ssh -i lablink-key.pem ubuntu@lablink.sleap.ai
-# or
-ssh -i lablink-key.pem ubuntu@44.224.160.186
+# or use IP from: terraform output -raw ec2_public_ip
+# (Pre-migration IP was 44.224.160.186 — will change after new sleap-lablink-eip-prod deploy)
 ```
 
 ### Config File Comparison
 
-```bash
-# View differences between environments
-diff config/config-test.yaml config/config-prod.yaml
+Compare the active `config.yaml` against a reference flavor file, or review the prod changes needed:
 
-# Key differences:
-# - custom_subdomain: "test" vs ""
-# - ssl.staging: true vs false
-# - machine.image: latest-test vs latest
+```bash
+# View differences between active config and a reference flavor
+diff lablink-infrastructure/config/config.yaml lablink-infrastructure/config/prod.example.yaml
+
+# Key differences (test → prod):
+# - dns.domain: "test.lablink.sleap.ai" → "lablink.sleap.ai"
+# - ssl.provider: "none" → "letsencrypt"
+# - machine.image: latest-test → versioned tag
 ```

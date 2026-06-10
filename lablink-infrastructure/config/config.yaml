@@ -1,5 +1,9 @@
-# SLEAP LabLink - Test Environment Configuration
-# Use this for staging/pre-production testing with S3 backend
+# SLEAP LabLink - Active Configuration
+# Single active config (template single-config model). Default = TEST environment.
+# To deploy PROD, edit machine.image (versioned), allocator.image_tag (pinned),
+# dns.domain ("lablink.sleap.ai"), dns.zone_id (verify for the domain),
+# and ssl.provider ("letsencrypt") before deploying.
+# Validated in CI via lablink-validate-config.
 
 db:
   dbname: "lablink_db"
@@ -11,24 +15,15 @@ db:
   message_channel: "vm_updates"
 
 machine:
-  # Client VM instance type
   machine_type: "g4dn.xlarge"  # GPU instance for SLEAP ML workloads
-
-  # Docker image for client VMs
-  # image: "ghcr.io/talmolab/lablink-client-base-image:linux-amd64-latest-test"
   image: "ghcr.io/talmolab/lablink-sleap-client-image:linux-amd64-f474d5bf1e8c4894c8c33bb903c613c7489e3574-test"
-
-  # AMI ID for us-west-2 (see AWS_RESOURCES.md)
   ami_id: "ami-0601752c11b394251"  # us-west-2 Ubuntu 24.04 + Docker + Nvidia
-
-  # Git repository with SLEAP tutorial data
   repository: "https://github.com/talmolab/sleap-tutorial-data.git"
-
-  # Software identifier for SLEAP
   software: "sleap"
-
-  # File extension for SLEAP data files
   extension: "slp"
+
+allocator:
+  image_tag: "linux-amd64-latest-test"  # base lablink-allocator-image tag
 
 app:
   admin_user: "admin"
@@ -36,23 +31,28 @@ app:
   region: "us-west-2"
 
 dns:
-  enabled: true  # Test uses DNS: test.lablink.sleap.ai
-  terraform_managed: false  # Manual DNS records (already created in Route53)
-  domain: "lablink.sleap.ai"
+  enabled: true
+  terraform_managed: false  # Manual Route53 records
+  domain: "test.lablink.sleap.ai"  # Full domain (no subdomain construction)
   zone_id: "Z010760118DSWF5IYKMOM"
-  app_name: ""
-  pattern: "custom"
-  custom_subdomain: "test"  # Creates: test.lablink.sleap.ai
-  create_zone: false
 
 eip:
-  strategy: "persistent"  # Test reuses lablink-eip-test (54.214.215.124)
-  tag_name: "lablink-eip"  # Terraform appends "-test" → lablink-eip-test
+  # "persistent" reuses a PRE-ALLOCATED EIP tagged Name=sleap-lablink-eip-<env>
+  # AND Environment=<env>. Terraform looks it up (data source) and FAILS at plan
+  # time if it does not exist — it does NOT create one. Pre-allocate+tag before the
+  # first deploy (see AWS_RESOURCES.md). Use "dynamic" instead to auto-create a new
+  # EIP each deploy (IP changes every deploy).
+  strategy: "persistent"
 
 ssl:
-  provider: "none"  # Caddy for SSL
-  email: "admin@sleap.ai"
-  staging: true  # HTTP only (unlimited testing, no rate limits)
+  provider: "none"  # "none"=HTTP, "letsencrypt", "cloudflare", "acm"
+  email: "admin@sleap.ai"  # used only for letsencrypt/cloudflare
+  certificate_arn: ""  # required (non-empty) only when ssl.provider = "acm"
+
+startup_script:
+  enabled: false
+  path: "config/custom-startup.sh"
+  on_error: "continue"
 
 # S3 bucket for Terraform state
 bucket_name: "tf-state-lablink-allocator-bucket"

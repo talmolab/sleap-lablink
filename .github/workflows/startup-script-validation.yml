@@ -1,0 +1,53 @@
+name: Validate Startup Script
+
+on:
+    push:
+        paths:
+            - "lablink-infrastructure/config/custom-startup.sh"
+
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+jobs:
+    validate-bash:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Run ShellCheck
+              uses: ludeeus/action-shellcheck@master
+              with:
+                  scandir: "./lablink-infrastructure/config"
+                  format: tty
+                  severity: warning
+
+            - name: Bash syntax check
+              run: |
+                  SCRIPT="lablink-infrastructure/config/custom-startup.sh"
+                  echo "Checking: $SCRIPT"
+                  bash -n "$SCRIPT"
+
+            - name: Log in to GitHub Container Registry
+              run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            - name: Run script in client base image
+              run: |
+                  CONFIG_FILE="lablink-infrastructure/config/config.yaml"
+                  SCRIPT_PATH="lablink-infrastructure/config/custom-startup.sh"
+
+                  # Extract client VM image from config
+                  CLIENT_IMAGE=$(grep -A5 "^machine:" "$CONFIG_FILE" | grep "image:" | head -1 | awk '{print $2}' | tr -d '"')
+
+                  echo "Client image: $CLIENT_IMAGE"
+                  docker pull "$CLIENT_IMAGE"
+
+                  # Run as client user
+                  docker run --rm \
+                    --user client \
+                    -v "$(pwd)/$SCRIPT_PATH:/home/client/custom-startup.sh:ro" \
+                    "$CLIENT_IMAGE" \
+                    bash /home/client/custom-startup.sh

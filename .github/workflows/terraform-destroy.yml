@@ -8,18 +8,20 @@ on:
         required: true
         default: "no"
         type: string
+      deployment_name:
+        description: "Unique deployment name (must match the deployment to destroy)"
+        required: true
+        default: "sleap-lablink"
+        type: string
       environment:
-        description: "Environment to destroy (test or prod) - dev uses local state and should only be used locally"
+        description: "Environment to destroy (test, prod, or ci-test) - dev uses local state and should only be used locally"
         required: true
         default: "test"
         type: choice
         options:
           - test
           - prod
-      allocator_image_tag:
-        description: "Docker image tag used in deployment (required for prod)"
-        required: false
-        type: string
+          - ci-test
 
 permissions:
   id-token: write
@@ -46,111 +48,69 @@ jobs:
           terraform_version: 1.6.6
           terraform_wrapper: false
 
-      - name: Validate and determine image tag
-        id: resolve_image_tag
-        run: |
-          if [ "${{ github.event.inputs.environment }}" = "prod" ]; then
-            if [ -z "${{ github.event.inputs.allocator_image_tag }}" ]; then
-              echo "Error: allocator_image_tag must be provided for prod destruction"
-              exit 1
-            fi
-            echo "tag=${{ github.event.inputs.allocator_image_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=linux-amd64-latest-test" >> "$GITHUB_OUTPUT"
-          fi
-
       # Initialize terraform to access outputs (IP and SSH key)
       - name: Terraform Init Infrastructure
         working-directory: lablink-infrastructure
         run: |
+          # Extract bucket name from config.yaml for S3 backend
           BUCKET_NAME=$(grep "^bucket_name:" config/config.yaml | awk '{print $2}' | tr -d '"')
           terraform init \
             -backend-config=backend-${{ github.event.inputs.environment }}.hcl \
             -backend-config="bucket=$BUCKET_NAME"
 
-      - name: Get Allocator Connection Info
-        id: allocator_info
-        working-directory: lablink-infrastructure
-        run: |
-          # Get allocator public IP
-          ALLOCATOR_IP=$(terraform output -raw ec2_public_ip)
-          echo "allocator_ip=$ALLOCATOR_IP" >> "$GITHUB_OUTPUT"
-          echo "Allocator IP: $ALLOCATOR_IP"
-
-          # Get SSH private key and save to file
-          terraform output -raw private_key_pem > /tmp/lablink-key.pem
-          chmod 600 /tmp/lablink-key.pem
-          echo "SSH key saved"
-
-      - name: Destroy Client VMs via Allocator
+      # Destroy Client VMs using S3 backend (state-only, no terraform files needed)
+      - name: Destroy Client VMs via S3 Backend
         continue-on-error: true
         run: |
-          echo "Attempting to destroy client VMs via allocator at ${{ steps.allocator_info.outputs.allocator_ip }}"
+          echo "Destroying client VMs from S3 state for environment: ${{ github.event.inputs.environment }}"
 
-          # Wait for SSH to be ready (allocator might still be booting)
-          echo "Waiting for SSH connection..."
-          for i in {1..30}; do
-            if ssh -i /tmp/lablink-key.pem -o StrictHostKeyChecking=no -o ConnectTimeout=5 \
-                ubuntu@${{ steps.allocator_info.outputs.allocator_ip }} "echo 'SSH ready'" 2>/dev/null; then
-              echo "✓ SSH connection established"
-              break
+          mkdir -p /tmp/client-destroy
+          cd /tmp/client-destroy
+
+          # Extract bucket name and region from config.yaml
+          BUCKET_NAME=$(grep "^bucket_name:" $GITHUB_WORKSPACE/lablink-infrastructure/config/config.yaml | awk '{print $2}' | tr -d '"')
+          REGION=$(awk '/^app:/,/^[a-z]/ {if (/^  region:/) print $2}' $GITHUB_WORKSPACE/lablink-infrastructure/config/config.yaml | tr -d '"')
+
+          echo "Using S3 bucket: $BUCKET_NAME"
+          echo "Region: $REGION"
+          echo "State key: ${{ github.event.inputs.environment }}/client/terraform.tfstate"
+
+          # Create minimal backend configuration
+          cat > backend.tf <<'BACKEND_EOF'
+          terraform {
+            backend "s3" {}
+          }
+          BACKEND_EOF
+
+          # Create backend config with values from config.yaml
+          cat > backend.hcl <<BACKEND_HCL
+          key            = "${{ github.event.inputs.environment }}/client/terraform.tfstate"
+          region         = "$REGION"
+          dynamodb_table = "lock-table"
+          encrypt        = true
+          BACKEND_HCL
+
+          # Initialize terraform with the S3 backend
+          terraform init \
+            -backend-config=backend.hcl \
+            -backend-config="bucket=$BUCKET_NAME"
+
+          # Check if there are any resources in state
+          if ! terraform show 2>/dev/null | grep -q "resource"; then
+            echo "✓ No client VMs in terraform state"
+          else
+            # Destroy all client VMs using state only (no configuration files needed)
+            echo "Destroying client VMs..."
+            if terraform destroy -auto-approve; then
+              echo "✓ Client VMs destroyed successfully"
+            else
+              echo "⚠ Client VM destruction failed (non-fatal)"
             fi
-            if [ $i -eq 30 ]; then
-              echo "⚠ SSH connection timeout - allocator may already be destroyed"
-              exit 0
-            fi
-            echo "  Attempt $i/30..."
-            sleep 10
-          done
-
-          # Destroy client VMs by running terraform inside the allocator container
-          echo "Connecting to allocator to destroy client VMs..."
-          ssh -i /tmp/lablink-key.pem -o StrictHostKeyChecking=no \
-              ubuntu@${{ steps.allocator_info.outputs.allocator_ip }} << 'ENDSSH'
-            # Get the allocator container ID
-            CONTAINER_ID=$(sudo docker ps --filter "ancestor=ghcr.io/talmolab/lablink-allocator" --format "{{.ID}}" | head -n 1)
-
-            if [ -z "$CONTAINER_ID" ]; then
-              echo "⚠ No allocator container found - client VMs may already be destroyed"
-              exit 0
-            fi
-
-            echo "✓ Found allocator container: $CONTAINER_ID"
-
-            # Run terraform destroy inside the container
-            sudo docker exec $CONTAINER_ID bash -c '
-              cd /app/lablink_allocator/terraform
-
-              # Check if terraform state exists
-              if ! terraform show 2>/dev/null | grep -q "resource"; then
-                echo "✓ No client VMs in terraform state"
-                exit 0
-              fi
-
-              # Destroy all client VMs
-              echo "Destroying client VMs..."
-              if terraform destroy -auto-approve; then
-                echo "✓ Client VMs destroyed successfully"
-              else
-                echo "⚠ Client VM destruction failed or no VMs to destroy (non-fatal)"
-              fi
-            '
-          ENDSSH
-
-          echo "✓ Client VM destruction attempt completed"
-
-      - name: Clean Up SSH Key
-        if: always()
-        run: |
-          rm -f /tmp/lablink-key.pem
-          echo "SSH key cleaned up"
+          fi
 
       - name: Terraform Destroy Infrastructure
         working-directory: lablink-infrastructure
         run: |
-          echo "Destroying allocator infrastructure..."
           terraform destroy -auto-approve \
-            -var="resource_suffix=${{ github.event.inputs.environment }}" \
-            -var="allocator_image_tag=${{ steps.resolve_image_tag.outputs.tag }}" \
-            -var-file="terraform.tfvars"
-          echo "✓ Infrastructure destroyed"
+            -var="deployment_name=${{ github.event.inputs.deployment_name }}" \
+            -var="environment=${{ github.event.inputs.environment }}"

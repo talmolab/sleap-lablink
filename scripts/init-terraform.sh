@@ -5,6 +5,7 @@ set -e
 
 ENVIRONMENT=${1:-dev}
 
+
 if [ "$ENVIRONMENT" = "dev" ]; then
     echo "Initializing Terraform for dev environment (local state)"
     terraform init -backend-config=backend-dev.hcl
@@ -16,19 +17,27 @@ else
         exit 1
     fi
 
-    BUCKET_NAME=$(grep "^bucket_name:" config/config.yaml | awk '{print $2}' | tr -d '"')
+    BUCKET_NAME=$(grep "^bucket_name:" config/config.yaml | awk '{print $2}' | tr -d '"' | head -n 1)
+    REGION=$(grep -A 5 "^app:" config/config.yaml | grep "^  region:" | awk '{print $2}' | tr -d '"' | head -n 1)
 
     if [ -z "$BUCKET_NAME" ] || [ "$BUCKET_NAME" = "YOUR-UNIQUE-SUFFIX" ]; then
         echo "Error: Please set a valid bucket_name in config/config.yaml"
         exit 1
     fi
 
+    if [ -z "$REGION" ]; then
+        echo "Error: Please set a valid region in config/config.yaml"
+        exit 1
+    fi
+
     echo "Initializing Terraform for $ENVIRONMENT environment"
     echo "Using S3 bucket: $BUCKET_NAME"
+    echo "Using region: $REGION"
 
     terraform init \
         -backend-config=backend-${ENVIRONMENT}.hcl \
-        -backend-config="bucket=$BUCKET_NAME"
+        -backend-config="bucket=$BUCKET_NAME" \
+        -backend-config="region=$REGION"
 fi
 
 echo "Terraform initialized successfully!"

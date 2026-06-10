@@ -196,9 +196,6 @@ crash.*.log
 *.tfvars
 *.tfvars.json
 
-# Exception: Allow template tfvars that only point to config files
-!lablink-infrastructure/terraform.tfvars
-
 # Ignore override files as they are usually used to override resources locally and so
 # are not checked in
 terraform/override.tf
@@ -232,6 +229,9 @@ outputs
 # Ignore VS Code workspace settings
 .vscode/
 
+# Ignore Claude Code personal settings (but track commands in .claude/commands/)
+.claude/settings.local.json
+
 # Ignore lambda zip files
 lambda_package.zip
 
@@ -240,9 +240,11 @@ lambda_package.zip
 *.key
 !*.pub
 
+# Terraform state backups from cleanup scripts
+terraform-state-backup-*
+
 # IDE files
 .idea/
 *.swp
 *.swo
 *~
-.claude/settings.local.json

@@ -1,7 +1,8 @@
 # SLEAP LabLink - Active Configuration
 # Single active config (template single-config model). Default = TEST environment.
 # To deploy PROD, edit machine.image (versioned), allocator.image_tag (pinned),
-# dns.domain ("lablink.sleap.ai"), and ssl.provider ("letsencrypt") before deploying.
+# dns.domain ("lablink.sleap.ai"), dns.zone_id (verify for the domain),
+# and ssl.provider ("letsencrypt") before deploying.
 # Validated in CI via lablink-validate-config.
 
 db:
@@ -36,12 +37,17 @@ dns:
   zone_id: "Z010760118DSWF5IYKMOM"
 
 eip:
-  strategy: "persistent"  # Tag derived as sleap-lablink-eip-test
+  # "persistent" reuses a PRE-ALLOCATED EIP tagged Name=sleap-lablink-eip-<env>
+  # AND Environment=<env>. Terraform looks it up (data source) and FAILS at plan
+  # time if it does not exist — it does NOT create one. Pre-allocate+tag before the
+  # first deploy (see AWS_RESOURCES.md). Use "dynamic" instead to auto-create a new
+  # EIP each deploy (IP changes every deploy).
+  strategy: "persistent"
 
 ssl:
-  provider: "none"  # HTTP (matches current working test state)
-  email: "admin@sleap.ai"
-  certificate_arn: ""
+  provider: "none"  # "none"=HTTP, "letsencrypt", "cloudflare", "acm"
+  email: "admin@sleap.ai"  # used only for letsencrypt/cloudflare
+  certificate_arn: ""  # required (non-empty) only when ssl.provider = "acm"
 
 startup_script:
   enabled: false

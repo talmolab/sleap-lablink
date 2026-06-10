@@ -166,7 +166,7 @@ if [ "$MODE" = "config-aware" ]; then
         echo -e "${RED}Error: Could not read ec2_public_ip from Terraform outputs${NC}"
         echo "  Terraform may not be initialized for the '$ENVIRONMENT' environment."
         echo "  Run: ./scripts/init-terraform.sh $ENVIRONMENT"
-        echo "  Then: terraform apply -var=\"resource_suffix=$ENVIRONMENT\""
+        echo "  Then: terraform apply -var=\"deployment_name=sleap-lablink\" -var=\"environment=$ENVIRONMENT\""
         exit 1
     fi
 

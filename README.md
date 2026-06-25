@@ -128,14 +128,31 @@ Create an IAM role with OIDC provider for GitHub Actions:
          },
          "Action": "sts:AssumeRoleWithWebIdentity",
          "Condition": {
+           "StringEquals": {
+             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+           },
            "StringLike": {
-             "token.actions.githubusercontent.com:sub": "repo:YOUR_ORG/YOUR_REPO:*"
+             "token.actions.githubusercontent.com:sub": [
+               "repo:YOUR_ORG/YOUR_REPO:*"
+             ]
            }
          }
        }
      ]
    }
    ```
+
+   > ⚠️ **The trust policy must list _this_ repository.** GitHub's OIDC token carries the calling repo in the `sub` claim (`repo:ORG/REPO:*`). When a single IAM role is **shared across multiple deployment repos** (e.g. `lablink-template` and `sleap-lablink` both assume `github-actions-lablink`), **every** repo must appear in the `sub` list — otherwise that repo's workflow fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` (see [Troubleshooting](#github-actions-not-authorized-to-perform-stsassumerolewithwebidentity)). To add a repo to an existing role without recreating it, edit `github-trust-policy.json` to include the new `repo:YOUR_ORG/NEW_REPO:*` entry, then:
+   >
+   > ```bash
+   > aws iam update-assume-role-policy \
+   >   --role-name github-actions-lablink \
+   >   --policy-document file://github-trust-policy.json
+   >
+   > # Verify the repo is now listed:
+   > aws iam get-role --role-name github-actions-lablink \
+   >   --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.StringLike'
+   > ```
 
 3. Attach permissions:
    - `PowerUserAccess` (or custom policy with EC2, VPC, S3, Route53, IAM permissions)
@@ -389,6 +406,35 @@ machine:
 See [AWS EC2 Instance Types](https://aws.amazon.com/ec2/instance-types/) for options.
 
 ## Troubleshooting
+
+### GitHub Actions: "Not authorized to perform sts:AssumeRoleWithWebIdentity"
+
+**Symptom**: The deploy workflow fails almost immediately (within ~2 minutes) at the **Configure AWS credentials via OIDC** step with:
+
+```
+Could not assume role with OIDC: Not authorized to perform sts:AssumeRoleWithWebIdentity
+```
+
+**Cause**: The IAM role in the `AWS_ROLE_ARN` secret exists, but its **trust policy doesn't permit this repository** to assume it — i.e. the `token.actions.githubusercontent.com:sub` condition doesn't include `repo:YOUR_ORG/THIS_REPO:*`. This commonly happens when one role is shared across several deployment repos, or after migrating to a new AWS account where the trust policy wasn't recreated for every repo. (The role's _permissions_ are fine; only the _trust relationship_ is wrong — no infrastructure changes are needed.)
+
+**Diagnose** — confirm which role the workflow tried to assume (and that the OIDC provider exists):
+
+```bash
+# Which role ARN was attempted, and the error? (STS events are usually in us-east-1 or your deploy region)
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=AssumeRoleWithWebIdentity \
+  --region us-west-2 --max-results 5 \
+  --query 'Events[].CloudTrailEvent' --output text
+
+# Is the GitHub OIDC provider present in the account?
+aws iam list-open-id-connect-providers   # expect token.actions.githubusercontent.com
+
+# What does the role currently trust?
+aws iam get-role --role-name github-actions-lablink \
+  --query 'Role.AssumeRolePolicyDocument.Statement[0].Condition.StringLike'
+```
+
+**Fix**: Add this repo to the role's trust policy `sub` list, then re-run the workflow — see [AWS_ROLE_ARN](#aws_role_arn) above for the exact `aws iam update-assume-role-policy` command.
 
 ### Deployment Fails with "InvalidAMI"
 
